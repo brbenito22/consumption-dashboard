@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Dynatrace tokens e configuração sensível — NUNCA commitar
+.dt-app/
+.mcp.json
+.env
+.env.*
+# app.config.json É versionado com config completo (scopes, icon, plugins) mas
+# COM environmentUrl em placeholder — defina o tenant localmente antes do deploy.
+# Nunca commitar a URL real do tenant. Tokens ficam em .dt-app/ (ignorado).
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Scripts locais com caminhos pessoais
+install.bat
+install.ps1
+start.ps1
+README.txt
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

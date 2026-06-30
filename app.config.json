@@ -1,0 +1,53 @@
+{
+  "environmentUrl": "https://<YOUR_TENANT_ID>.apps.dynatrace.com",
+  "app": {
+    "id": "my.consumption.dashboard",
+    "name": "Cost Center",
+    "version": "1.50.0",
+    "description": "Cost Center — consumption, billing and cost across Dynatrace capabilities.",
+    "icon": "assets/icon.svg",
+    "scopes": [
+      {
+        "name": "app-settings:objects:read",
+        "comment": "Read rate card configuration (OAuth credentials) from app settings"
+      },
+      {
+        "name": "storage:logs:read",
+        "comment": "Query log ingestion data from Grail"
+      },
+      {
+        "name": "storage:spans:read",
+        "comment": "Query distributed traces/spans from Grail"
+      },
+      {
+        "name": "storage:events:read",
+        "comment": "Query monitoring events from Grail"
+      },
+      {
+        "name": "storage:bizevents:read",
+        "comment": "Query business events from Grail"
+      },
+      {
+        "name": "storage:metrics:read",
+        "comment": "Query metrics and billing usage data from Grail"
+      },
+      {
+        "name": "storage:entities:read",
+        "comment": "Query entity data (hosts, K8s, cloud) from Grail"
+      },
+      {
+        "name": "storage:buckets:read",
+        "comment": "List available storage buckets"
+      },
+      {
+        "name": "storage:system:read",
+        "comment": "Query dt.system.events for billing usage data"
+      },
+      {
+        "name": "environment-api:metrics:read",
+        "comment": "Read metric series via Environment API"
+      }
+    ]
+  },
+  "plugins": ["@dynatrace-sdk/dt-app-plugin-client-app-settings-v2"]
+}

@@ -1,0 +1,82 @@
+{
+  "$schema": "https://developer.dynatrace.com/docs-assets/schema_strict_apps.json",
+  "dynatrace": "1",
+  "schemaId": "rate-card-settings",
+  "version": "0.0.3",
+  "summaryPattern": "{rate_card_type}",
+  "displayName": "Cost Center — Rate Card",
+  "description": "Configure how Cost Center obtains capability prices. Use your Account Rate Card (via OAuth client credentials) or the Dynatrace default rate card.",
+  "multiObject": true,
+  "maxObjects": 1,
+  "ordered": false,
+  "enums": {
+    "rate_card_type": {
+      "type": "enum",
+      "displayName": "Rate Card Type",
+      "items": [
+        {
+          "displayName": "Account Rate Card",
+          "value": "account",
+          "description": "Fetch your contract prices from the Account Management API"
+        },
+        {
+          "displayName": "Default Rate Card",
+          "value": "default",
+          "description": "Use Dynatrace's published list prices - https://www.dynatrace.com/pricing/rate-card/"
+        }
+      ]
+    }
+  },
+  "properties": {
+    "rate_card_type": {
+      "displayName": "Rate Card Source",
+      "type": { "$ref": "#/enums/rate_card_type" },
+      "default": "default",
+      "description": "Choose 'Account Rate Card' to fetch your real contract prices from the Account Management API (requires the OAuth fields below). Choose 'Default Rate Card' to use Dynatrace public list prices — no credentials needed."
+    },
+    "account_id": {
+      "displayName": "Account ID (UUID)",
+      "type": "text",
+      "default": "",
+      "description": "Your Dynatrace Account UUID. Find it at https://myaccount.dynatrace.com → it is the UUID in the page URL (account/<UUID>), or under Account Management → Account settings. Paste only the UUID, WITHOUT the 'urn:dtaccount:' prefix."
+    },
+    "client_id": {
+      "displayName": "OAuth2 Client ID",
+      "type": "text",
+      "default": "",
+      "description": "Create an OAuth client at https://myaccount.dynatrace.com → Identity & access management → OAuth clients → Create client. Grant the permission 'Account UAC read' (account-uac-read). After creating, copy the Client ID (starts with 'dt0s02.')."
+    },
+    "client_secret": {
+      "displayName": "OAuth2 Client Secret",
+      "type": "secret",
+      "default": "",
+      "description": "The Client Secret shown ONCE when you create the OAuth client above. If you lost it, generate a new secret for the same client. Stored encrypted; re-enter it whenever you save changes."
+    },
+    "sso_url": {
+      "displayName": "SSO Token URL",
+      "type": "text",
+      "default": "https://sso.dynatrace.com/sso/oauth2/token",
+      "description": "OAuth token endpoint. Production tenants: keep the default. Sprint/dev tenants: use https://sso-sprint.dynatracelabs.com/sso/oauth2/token."
+    },
+    "account_api_base": {
+      "displayName": "Account Management API Base",
+      "type": "text",
+      "default": "https://api.dynatrace.com",
+      "description": "Base URL of the Account Management API. Production: keep the default https://api.dynatrace.com."
+    },
+    "subscription_id": {
+      "displayName": "Subscription UUID (optional)",
+      "type": "text",
+      "nullable": true,
+      "description": "Optional. Used to read Dynatrace's authoritative total cost from the Platform Subscription API. Leave empty to auto-discover the first subscription. Find it via GET /sub/v2/accounts/{account}/subscriptions."
+    }
+  },
+  "constraints": [
+    {
+      "type": "SECRET_RESUBMISSION",
+      "customMessage": "For security reasons please re-enter the client secret to save the configuration.",
+      "checkAllProperties": false
+    }
+  ],
+  "schemaConstraints": []
+}

@@ -1,0 +1,24 @@
+{
+  "name": "consumption-dashboard",
+  "version": "1.0.0",
+  "description": "Dynatrace Consumption Dashboard - Monitor hourly usage across all capabilities",
+  "scripts": {
+    "start": "dt-app dev",
+    "build": "dt-app build",
+    "deploy": "dt-app deploy"
+  },
+  "dependencies": {
+    "@dynatrace-sdk/client-query": "^1",
+    "@dynatrace-sdk/react-hooks": "^1",
+    "@dynatrace/strato-components-preview": "^1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@dynatrace-sdk/dt-app-plugin-client-app-settings-v2": "^0.4.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "dt-app": "*",
+    "typescript": "^5.0.0"
+  }
+}
