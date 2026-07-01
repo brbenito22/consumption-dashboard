@@ -413,15 +413,11 @@ export const dduTotalQuery = (tr: TimeRangeOption) =>
   "timeseries ddu = sum(`builtin:billing.ddu.metrics.byEntity`), from:" + tr.dqlFrom + ", to:" + tr.dqlTo + ", interval:" + tr.binInterval;
 
 /**
- * Cloud compute instance counts — entity types fixed to match Grail's
- * actual entity definitions. The previous identifiers (`dt.entity.cloud.aws:…`,
- * `dt.entity.cloud.azure:…`, `dt.entity.cloud.gcp:…`) are not real entity
- * types in DQL and were silently failing, making the Cloud tab appear blank.
- *
- *   AWS   → `dt.entity.ec2_instance` (validated)
- *   Azure → `dt.entity.azure_vm`     (validated)
- *   GCP   → no dedicated GCE entity type in Grail today; count GCP-hosted
- *           hosts via `dt.entity.host` filtered by cloudType
+ * Cloud compute instance counts — kept as compat exports for any other page
+ * that imports them. The Cloud tab now uses the multi-service inventory
+ * queries below instead (`awsInventoryQuery` / `azureInventoryQuery` /
+ * `gcpInventoryQuery`) — compute-only counting missed Lambda / RDS / GCS /
+ * managed services entirely.
  */
 export const cloudInstanceQuery = () => `
 fetch dt.entity.ec2_instance
@@ -434,9 +430,90 @@ fetch dt.entity.azure_vm
 `.trim();
 
 export const gcpInstanceQuery = () => `
-fetch dt.entity.host
-| filter cloudType == "GOOGLE_CLOUD_PLATFORM"
+fetch \`dt.entity.cloud:gcp:gce_instance\`
 | summarize count = count()
+`.trim();
+
+/**
+ * AWS SERVICE INVENTORY — one row per service with its entity count.
+ * Uses `append` to fan-out multiple `fetch` calls; each `fetch` returns 1 row
+ * (count from `summarize`) tagged with the service label. If an entity type
+ * does not exist in the tenant, the sub-query returns 0 and the row still
+ * appears (safe by construction — every `fetch dt.entity.X | summarize count`
+ * yields exactly one row even when X is empty).
+ *
+ * Entity types validated against `dt.semantic_dictionary.models`.
+ */
+export const awsInventoryQuery = () => `
+fetch dt.entity.ec2_instance | summarize count = count() | fieldsAdd svc = "EC2"
+| append [ fetch dt.entity.aws_lambda_function | summarize count = count() | fieldsAdd svc = "Lambda" ]
+| append [ fetch dt.entity.relational_database_service | summarize count = count() | fieldsAdd svc = "RDS" ]
+| append [ fetch dt.entity.elastic_load_balancer | summarize count = count() | fieldsAdd svc = "ELB (classic)" ]
+| append [ fetch dt.entity.aws_application_load_balancer | summarize count = count() | fieldsAdd svc = "ALB" ]
+| append [ fetch dt.entity.aws_network_load_balancer | summarize count = count() | fieldsAdd svc = "NLB" ]
+| append [ fetch dt.entity.ebs_volume | summarize count = count() | fieldsAdd svc = "EBS" ]
+| fields svc, count
+| sort count desc
+`.trim();
+
+/** Azure SERVICE INVENTORY — same shape as AWS. Entity types use `azure_*`. */
+export const azureInventoryQuery = () => `
+fetch dt.entity.azure_vm | summarize count = count() | fieldsAdd svc = "Virtual Machines"
+| append [ fetch dt.entity.azure_function_app | summarize count = count() | fieldsAdd svc = "Functions" ]
+| append [ fetch dt.entity.azure_sql_database | summarize count = count() | fieldsAdd svc = "SQL Database" ]
+| append [ fetch dt.entity.azure_cosmos_db | summarize count = count() | fieldsAdd svc = "Cosmos DB" ]
+| append [ fetch dt.entity.azure_storage_account | summarize count = count() | fieldsAdd svc = "Storage" ]
+| append [ fetch dt.entity.azure_web_app | summarize count = count() | fieldsAdd svc = "Web App" ]
+| append [ fetch dt.entity.azure_load_balancer | summarize count = count() | fieldsAdd svc = "Load Balancer" ]
+| append [ fetch dt.entity.azure_redis_cache | summarize count = count() | fieldsAdd svc = "Redis" ]
+| fields svc, count
+| sort count desc
+`.trim();
+
+/**
+ * GCP SERVICE INVENTORY — same shape, but entity types live under the
+ * `cloud:gcp:*` namespace and MUST be wrapped in backticks (colons are
+ * otherwise rejected by the DQL parser).
+ */
+export const gcpInventoryQuery = () => `
+fetch \`dt.entity.cloud:gcp:gce_instance\` | summarize count = count() | fieldsAdd svc = "Compute Engine"
+| append [ fetch \`dt.entity.cloud:gcp:cloud_function\` | summarize count = count() | fieldsAdd svc = "Cloud Functions" ]
+| append [ fetch \`dt.entity.cloud:gcp:cloudsql_database\` | summarize count = count() | fieldsAdd svc = "Cloud SQL" ]
+| append [ fetch \`dt.entity.cloud:gcp:gcs_bucket\` | summarize count = count() | fieldsAdd svc = "Cloud Storage" ]
+| append [ fetch \`dt.entity.cloud:gcp:k8s_cluster\` | summarize count = count() | fieldsAdd svc = "GKE" ]
+| fields svc, count
+| sort count desc
+`.trim();
+
+/**
+ * GCP integration signal — number of connected GCP projects.
+ * Validated on a real cloud-connected tenant: `count = 1` even when compute hosts are managed
+ * without OneAgent. AWS/Azure credentials entities are NOT reliable signals
+ * (they return 0 in a tenant with clearly active EC2/VM inventory), so we
+ * rely on the multi-service inventory totals for those two providers.
+ */
+export const gcpProjectsCountQuery = () => `
+fetch \`dt.entity.cloud:gcp:project\`
+| summarize count = count()
+`.trim();
+
+/**
+ * Metrics DPS billing — cloud-service metric consumption in DPS-priced tenants.
+ *
+ * On DPS-priced tenants `builtin:billing.ddu.metrics.byEntity`
+ * is empty even with CloudWatch / Azure Monitor / Google Cloud integrations
+ * actively ingesting. Instead, the billed quantity flows through
+ * `Metrics - Ingest & Process` (`data_points`). This is aggregate — per-cloud-
+ * service attribution requires integration-side dimensions and is not exposed
+ * by billing, so the Cloud tab surfaces the total DPS consumption + a note.
+ */
+export const metricsDpsBillingQuery = (tr: TimeRangeOption) => `
+fetch dt.system.events, from: ${tr.dqlFrom}, to: ${tr.dqlTo}
+| filter event.kind == "BILLING_USAGE_EVENT" and event.type == "Metrics - Ingest & Process"
+| summarize {
+    data_points = sum(coalesce(data_points, 0)),
+    events = count()
+  }
 `.trim();
 
 // ── OVERVIEW TOTALS — current week ────────────────────────────────────────────

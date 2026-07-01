@@ -191,16 +191,36 @@ export const STRINGS = {
     en: "Full-Stack license cost of the cluster nodes (K8s nodes are billed as Full-Stack hosts).",
     pt: "Custo de licença Full-Stack dos nodes do cluster (nodes K8s são cobrados como hosts Full-Stack).",
   },
-  // Cloud integration section
+  // Cloud tab — page subtitle
+  "cloud.subtitle": {
+    en: "Cloud provider footprint and managed services monitored by Dynatrace. Host and Kubernetes license cost lives in the Infrastructure & K8s tab.",
+    pt: "Footprint dos provedores de cloud e serviços gerenciados monitorados pelo Dynatrace. Custo de licença de host e Kubernetes vive na aba Infrastructure & K8s.",
+  },
+  // Cloud integration section (legacy — kept for compat with any other consumer)
   "cloud.integrationTitle": { en: "Cloud Integration Consumption & Cost", pt: "Consumo e Custo da Integração de Cloud" },
   "cloud.serviceMetricTitle": { en: "Cloud Service Metric Consumption (DDU) by service", pt: "Consumo de Métricas de Serviços de Cloud (DDU) por serviço" },
   "cloud.costNote": {
-    en: "This tab covers the direct cloud integration (AWS CloudWatch / Azure Monitor / Google Cloud). Connected cloud services (RDS, Lambda, S3, etc.) carry no OneAgent and are billed by the metric data points they ingest (Davis Data Units, under “Metrics – Ingest & Process”) — there is no per-service billing SKU. Cloud VMs/hosts that run OneAgent (EC2 / Azure VM / GCE) are NOT shown here to avoid double counting: their Full-Stack / Infrastructure cost is in the Infrastructure & K8s tab.",
-    pt: "Esta aba cobre a integração direta de cloud (AWS CloudWatch / Azure Monitor / Google Cloud). Os serviços de cloud conectados (RDS, Lambda, S3, etc.) não têm OneAgent e são cobrados pelos data points de métrica que ingerem (Davis Data Units, em “Metrics – Ingest & Process”) — não existe SKU de billing por serviço. VMs/hosts de cloud que rodam OneAgent (EC2 / Azure VM / GCE) NÃO aparecem aqui para evitar dupla contagem: o custo Full-Stack / Infrastructure deles está na aba Infrastructure & K8s.",
+    en: "This tab covers the direct cloud integration (AWS CloudWatch / Azure Monitor / Google Cloud). Connected cloud services (RDS, Lambda, S3, etc.) carry no OneAgent and are billed by the metric data points they ingest — there is no per-service billing SKU. Cloud VMs/hosts that run OneAgent (EC2 / Azure VM / GCE) are NOT shown here to avoid double counting: their Full-Stack / Infrastructure cost is in the Infrastructure & K8s tab.",
+    pt: "Esta aba cobre a integração direta de cloud (AWS CloudWatch / Azure Monitor / Google Cloud). Os serviços de cloud conectados (RDS, Lambda, S3, etc.) não têm OneAgent e são cobrados pelos data points de métrica que ingerem — não existe SKU de billing por serviço. VMs/hosts de cloud que rodam OneAgent (EC2 / Azure VM / GCE) NÃO aparecem aqui para evitar dupla contagem: o custo Full-Stack / Infrastructure deles está na aba Infrastructure & K8s.",
   },
+  // Cloud metrics (DPS billing) section — new
+  "cloud.metricsTitle": {
+    en: "Cloud metrics — billed as “Metrics - Ingest & Process”",
+    pt: "Métricas de cloud — cobradas como “Metrics - Ingest & Process”",
+  },
+  "cloud.metricsNote": {
+    en: "In DPS-priced tenants, cloud-service metric consumption (CloudWatch, Azure Monitor, Google Cloud) is billed via “Metrics - Ingest & Process” (data_points) — not via DDU. This aggregate is the direct cost signal for the integration; per-cloud-service attribution requires integration-side dimensions that billing does not expose. Cloud host cost (OneAgent Full-Stack / Infrastructure) remains attributed on the Infrastructure & K8s tab.",
+    pt: "Em tenants DPS, o consumo de métricas dos serviços de cloud (CloudWatch, Azure Monitor, Google Cloud) é cobrado via “Metrics - Ingest & Process” (data_points) — não via DDU. Esse agregado é o sinal direto de custo da integração; atribuição por serviço de cloud requer dimensões da integração que o billing não expõe. O custo de host de cloud (OneAgent Full-Stack / Infrastructure) continua atribuído na aba Infrastructure & K8s.",
+  },
+  // Existing empty-state note (kept for compat) — shown when NO providers show inventory
   "cloud.noIntegration": {
-    en: "No cloud integration is connected yet. Connect AWS CloudWatch, Azure Monitor or Google Cloud and the monitored services and their metric consumption (DDU) will populate here automatically. Cloud host (OneAgent) cost stays in the Infrastructure & K8s tab.",
-    pt: "Nenhuma integração de cloud conectada ainda. Conecte AWS CloudWatch, Azure Monitor ou Google Cloud e os serviços monitorados e seu consumo de métricas (DDU) vão popular aqui automaticamente. O custo de host de cloud (OneAgent) permanece na aba Infrastructure & K8s.",
+    en: "No cloud integration is connected yet. Connect AWS CloudWatch, Azure Monitor or Google Cloud and the monitored services and their metric consumption will populate here automatically. Cloud host (OneAgent) cost stays in the Infrastructure & K8s tab.",
+    pt: "Nenhuma integração de cloud conectada ainda. Conecte AWS CloudWatch, Azure Monitor ou Google Cloud e os serviços monitorados e seu consumo de métricas vão popular aqui automaticamente. O custo de host de cloud (OneAgent) permanece na aba Infrastructure & K8s.",
+  },
+  // Root-level empty state (shown at top of Cloud tab, above metrics section)
+  "cloud.noIntegrationRoot": {
+    en: "No cloud provider integration is currently active in this environment. Connect AWS (CloudWatch / metric streams), Azure Monitor or Google Cloud, or deploy OneAgent on cloud hosts, and their instances, services and consumption will populate automatically.",
+    pt: "Nenhuma integração de provedor de cloud está ativa neste ambiente. Conecte AWS (CloudWatch / metric streams), Azure Monitor ou Google Cloud, ou instale OneAgent em hosts de cloud, e as instâncias, serviços e consumo aparecerão automaticamente.",
   },
   // Cloud
   "kpi.totalCloudInstances.title": { en: "Total Cloud Instances", pt: "Total de Instâncias Cloud" },

@@ -5,14 +5,16 @@ import Colors from "@dynatrace/strato-design-tokens/colors";
 import { KpiCard } from "../components/KpiCard";
 import { PageHeader } from "../components/PageHeader";
 import { useDql, formatCount } from "../hooks/useDql";
+import { useRateCard } from "../hooks/useRateCard";
+import { useCurrency } from "../context/CurrencyContext";
+import { normalizeCapabilityName } from "../constants/rateCard";
 import {
-  cloudInstanceQuery,
-  azureVmQuery,
-  gcpInstanceQuery,
-  cloudServiceDduByTypeQuery,
+  awsInventoryQuery,
+  azureInventoryQuery,
+  gcpInventoryQuery,
+  gcpProjectsCountQuery,
+  metricsDpsBillingQuery,
 } from "../queries";
-import { TopContributors, type ContributorRow } from "../components/TopContributors";
-import { chartColor } from "../constants/palette";
 import { useLang } from "../context/LanguageContext";
 import { kpiInfo } from "../i18n/kpiInfo";
 import type { TimeRangeOption } from "../types";
@@ -21,96 +23,181 @@ interface CloudProps {
   timeRange: TimeRangeOption;
 }
 
+interface InventoryRow { svc: string; count: number }
+
+const toInventory = (data: Record<string, unknown>[] | null): InventoryRow[] =>
+  (data ?? []).map((r) => ({
+    svc: String((r as Record<string, unknown>).svc ?? "—"),
+    count: Number((r as Record<string, unknown>).count ?? 0),
+  }));
+
+const sumCount = (rows: InventoryRow[]): number =>
+  rows.reduce((s, r) => s + r.count, 0);
+
 const num = (d: Record<string, unknown>[] | null | undefined, f: string) =>
   Number((d?.[0] as Record<string, unknown> | undefined)?.[f] ?? 0);
 
-// Dynatrace-supported cloud services per provider (catalog of areas).
-const AWS_SERVICES = ["EC2", "Lambda", "RDS", "DynamoDB", "S3", "ELB / ALB", "EBS", "ECS", "EKS", "API Gateway", "SQS", "SNS"];
-const AZURE_SERVICES = ["Virtual Machines", "Functions", "SQL Database", "Cosmos DB", "Blob Storage", "Load Balancer", "AKS", "App Service", "Service Bus", "Event Hubs"];
-const GCP_SERVICES = ["Compute Engine", "Cloud Functions", "Cloud SQL", "Cloud Storage", "GKE", "Load Balancing", "Pub/Sub", "BigQuery", "Cloud Run"];
+// Canonical service label lists used as the visual "catalog" per provider.
+// Each label maps to at most one inventory row (a service the app queries).
+// Services not in the inventory query still render — they show as "not tracked"
+// so the user knows Dynatrace can monitor them, but no entity was found.
+const AWS_SERVICES = [
+  "EC2", "Lambda", "RDS", "S3", "ELB (classic)", "ALB", "NLB",
+  "EBS", "DynamoDB", "ECS", "EKS", "API Gateway", "SQS", "SNS",
+];
+const AZURE_SERVICES = [
+  "Virtual Machines", "Functions", "SQL Database", "Cosmos DB",
+  "Storage", "Load Balancer", "Web App", "Redis",
+  "AKS", "App Service", "Service Bus", "Event Hubs",
+];
+const GCP_SERVICES = [
+  "Compute Engine", "Cloud Functions", "Cloud SQL", "Cloud Storage",
+  "GKE", "Cloud Run", "Load Balancing", "Pub/Sub", "BigQuery",
+];
 
-const ServiceCatalog: React.FC<{ services: string[]; monitored: boolean }> = ({ services, monitored }) => (
-  <Grid gridTemplateColumns="repeat(auto-fill, minmax(150px, 1fr))" gap={8}>
-    {services.map((s) => (
-      <Surface key={s} elevation="flat" style={{ padding: "8px 12px", display: "flex", flexDirection: "column", gap: 2 }}>
-        <Text textStyle="small-emphasized" style={{ color: Colors.Text.Neutral.Default }}>{s}</Text>
-        <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued, fontSize: "11px" }}>
-          {monitored ? "monitored" : "not monitored"}
-        </Text>
-      </Surface>
-    ))}
-  </Grid>
-);
+const ServiceCatalog: React.FC<{ services: string[]; inventory: InventoryRow[] }> = ({ services, inventory }) => {
+  const byName = new Map(inventory.map((r) => [r.svc, r.count]));
+  return (
+    <Grid gridTemplateColumns="repeat(auto-fill, minmax(170px, 1fr))" gap={8}>
+      {services.map((s) => {
+        const count = byName.get(s);
+        const tracked = count !== undefined;
+        const monitored = tracked && count > 0;
+        return (
+          <Surface key={s} elevation="flat" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 2 }}>
+            <Flex justifyContent="space-between" alignItems="baseline" gap={6}>
+              <Text textStyle="small-emphasized" style={{ color: Colors.Text.Neutral.Default }}>{s}</Text>
+              {tracked && (
+                <Text textStyle="small-emphasized" style={{ color: monitored ? Colors.Text.Success.Default : Colors.Text.Neutral.Subdued }}>
+                  {formatCount(count)}
+                </Text>
+              )}
+            </Flex>
+            <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued, fontSize: "11px" }}>
+              {monitored ? "monitored" : tracked ? "no entities" : "not tracked"}
+            </Text>
+          </Surface>
+        );
+      })}
+    </Grid>
+  );
+};
 
 export const Cloud: React.FC<CloudProps> = ({ timeRange }) => {
   const { t } = useLang();
-  const awsQ   = useDql(useMemo(() => cloudInstanceQuery(), []));
-  const azureQ = useDql(useMemo(() => azureVmQuery(),       []));
-  const gcpQ   = useDql(useMemo(() => gcpInstanceQuery(),   []));
-  // Cloud-integration service metric consumption (DDU). Populates only when a
-  // CloudWatch / Azure Monitor / Google Cloud integration is connected.
-  const dduQ   = useDql(useMemo(() => cloudServiceDduByTypeQuery(timeRange), [timeRange]));
+  const { money: formatCurrency } = useCurrency();
+  const rateCard = useRateCard();
 
-  const loading    = awsQ.isLoading || azureQ.isLoading || gcpQ.isLoading;
-  const awsCount   = num(awsQ.data, "count");
-  const azureCount = num(azureQ.data, "count");
-  const gcpCount   = num(gcpQ.data, "count");
+  const awsQ    = useDql(useMemo(() => awsInventoryQuery(),   []));
+  const azureQ  = useDql(useMemo(() => azureInventoryQuery(), []));
+  const gcpQ    = useDql(useMemo(() => gcpInventoryQuery(),   []));
+  const gcpPrjQ = useDql(useMemo(() => gcpProjectsCountQuery(), []));
+  // DPS-priced metrics — replaces DDU as the cloud-service cost signal.
+  const dpsQ    = useDql(useMemo(() => metricsDpsBillingQuery(timeRange), [timeRange]));
+
+  const awsInv   = useMemo(() => toInventory(awsQ.data),   [awsQ.data]);
+  const azureInv = useMemo(() => toInventory(azureQ.data), [azureQ.data]);
+  const gcpInv   = useMemo(() => toInventory(gcpQ.data),   [gcpQ.data]);
+
+  const awsCount   = sumCount(awsInv);
+  const azureCount = sumCount(azureInv);
+  const gcpCount   = sumCount(gcpInv);
   const totalCloud = awsCount + azureCount + gcpCount;
+  const gcpProjects = num(gcpPrjQ.data, "count");
 
-  const dduRows: ContributorRow[] = useMemo(
-    () => ((dduQ.data ?? []) as Record<string, unknown>[]).map((r) => ({
-      name: String(r.etype ?? "—"), value: Number(r.dduSum ?? 0),
-    })),
-    [dduQ.data],
+  // Presence of ANY entity across providers OR a connected GCP project is a
+  // reliable "integration is live" signal. DDU was previously used here and is
+  // 0 in DPS-priced tenants → false negative that hid an actively-integrated
+  // cloud environment.
+  const hasIntegration = totalCloud > 0 || gcpProjects > 0;
+
+  const loading = awsQ.isLoading || azureQ.isLoading || gcpQ.isLoading;
+
+  // DPS metrics cost: data_points × Metrics-Ingest rate from the rate card.
+  const dataPoints = num(dpsQ.data, "data_points");
+  const metricsRate = rateCard.ratesByName.get(
+    normalizeCapabilityName("Metrics - Ingest & Process"),
   );
-  const hasIntegration = dduRows.length > 0;
+  const dpsCost = metricsRate ? dataPoints * metricsRate.price : 0;
 
   return (
     <Flex flexDirection="column" gap={24} padding={24}>
       <PageHeader
         title="Cloud"
-        subtitle="Cloud provider footprint and managed services monitored by Dynatrace. Host and Kubernetes license cost lives in the Infrastructure & K8s tab."
+        subtitle={t("cloud.subtitle")}
       />
 
-      {/* ════════ SUMMARY ════════ */}
+      {/* ════════ SUMMARY KPIs ════════ */}
       <Flex gap={12} flexWrap="wrap">
-        <KpiCard label="Total Cloud Instances" value={loading ? "…" : formatCount(totalCloud)} subLabel="compute across providers" isLoading={loading} info={kpiInfo(t, "totalCloudInstances")} />
-        <KpiCard label="AWS Instances"   value={awsQ.isLoading ? "…" : formatCount(awsCount)}     subLabel="EC2 monitored"           isLoading={awsQ.isLoading}   error={awsQ.error} colorVariant="positive" info={kpiInfo(t, "awsInstances")} />
-        <KpiCard label="Azure VMs"       value={azureQ.isLoading ? "…" : formatCount(azureCount)} subLabel="virtual machines"        isLoading={azureQ.isLoading} error={azureQ.error} info={kpiInfo(t, "azureVms")} />
-        <KpiCard label="GCP Instances"   value={gcpQ.isLoading ? "…" : formatCount(gcpCount)}     subLabel="compute instances"       isLoading={gcpQ.isLoading}   error={gcpQ.error} info={kpiInfo(t, "gcpInstances")} />
+        <KpiCard
+          label="Total Cloud Entities"
+          value={loading ? "…" : formatCount(totalCloud)}
+          subLabel="across providers"
+          isLoading={loading}
+          info={kpiInfo(t, "totalCloudInstances")}
+        />
+        <KpiCard
+          label="AWS Entities"
+          value={awsQ.isLoading ? "…" : formatCount(awsCount)}
+          subLabel={awsInv.length > 0 ? `${awsInv.filter((r) => r.count > 0).length} of ${awsInv.length} services` : "no data"}
+          isLoading={awsQ.isLoading}
+          error={awsQ.error}
+          colorVariant="positive"
+          info={kpiInfo(t, "awsInstances")}
+        />
+        <KpiCard
+          label="Azure Entities"
+          value={azureQ.isLoading ? "…" : formatCount(azureCount)}
+          subLabel={azureInv.length > 0 ? `${azureInv.filter((r) => r.count > 0).length} of ${azureInv.length} services` : "no data"}
+          isLoading={azureQ.isLoading}
+          error={azureQ.error}
+          info={kpiInfo(t, "azureVms")}
+        />
+        <KpiCard
+          label="GCP Entities"
+          value={gcpQ.isLoading ? "…" : formatCount(gcpCount)}
+          subLabel={gcpProjects > 0 ? `${gcpProjects} project connected` : (gcpInv.length > 0 ? `${gcpInv.filter((r) => r.count > 0).length} of ${gcpInv.length} services` : "no data")}
+          isLoading={gcpQ.isLoading}
+          error={gcpQ.error}
+          info={kpiInfo(t, "gcpInstances")}
+        />
       </Flex>
 
-      {!loading && totalCloud === 0 && (
+      {!loading && !hasIntegration && (
         <Surface elevation="flat" color="primary" style={{ padding: "14px 18px" }}>
           <Text textStyle="small" style={{ color: Colors.Text.Neutral.Default }}>
-            No cloud provider integration is currently active in this environment. The areas below show the cloud
-            services Dynatrace can monitor — connect AWS (CloudWatch / metric streams), Azure Monitor or Google Cloud,
-            or deploy OneAgent on cloud hosts, and their instances, consumption and cost will populate automatically.
+            {t("cloud.noIntegrationRoot")}
           </Text>
         </Surface>
       )}
 
       <Divider />
 
-      {/* ════════ CLOUD INTEGRATION (CloudWatch / Azure Monitor / GCP) ════════ */}
+      {/* ════════ CLOUD METRICS (DPS) COST ════════ */}
       <Flex flexDirection="column" gap={8}>
         <Flex alignItems="center" gap={6}>
-          <Heading level={3}>{t("cloud.integrationTitle")}</Heading>
+          <Heading level={3}>{t("cloud.metricsTitle")}</Heading>
         </Flex>
         <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued, maxWidth: 980 }}>
-          {t("cloud.costNote")}
+          {t("cloud.metricsNote")}
         </Text>
         {hasIntegration ? (
-          <Grid gridTemplateColumns="repeat(auto-fit, minmax(420px, 1fr))" gap={16}>
-            <TopContributors
-              title={t("cloud.serviceMetricTitle")}
-              unit="DDU"
-              color={chartColor(2)}
-              rows={dduRows}
-              isLoading={dduQ.isLoading}
-              error={dduQ.error}
+          <Flex gap={12} flexWrap="wrap">
+            <KpiCard
+              label="Metrics Data Points (window)"
+              value={dpsQ.isLoading ? "…" : formatCount(dataPoints)}
+              subLabel={`billed as “Metrics - Ingest & Process”`}
+              isLoading={dpsQ.isLoading}
+              error={dpsQ.error}
             />
-          </Grid>
+            <KpiCard
+              label="Metrics Cost (window)"
+              value={dpsQ.isLoading || rateCard.isLoading ? "…" : formatCurrency(dpsCost)}
+              subLabel={metricsRate ? `${metricsRate.quotedUnitOfMeasure}` : "no rate matched"}
+              isLoading={dpsQ.isLoading || rateCard.isLoading}
+              colorVariant={dpsCost > 0 ? "warning" : "default"}
+            />
+          </Flex>
         ) : (
           <Surface elevation="flat" color="primary" style={{ padding: "14px 18px" }}>
             <Text textStyle="small" style={{ color: Colors.Text.Neutral.Default }}>
@@ -126,9 +213,11 @@ export const Cloud: React.FC<CloudProps> = ({ timeRange }) => {
       <Flex flexDirection="column" gap={8}>
         <Flex justifyContent="space-between" alignItems="baseline" flexWrap="wrap" gap={8}>
           <Heading level={3}>Amazon Web Services</Heading>
-          <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued }}>{formatCount(awsCount)} EC2 instances monitored</Text>
+          <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued }}>
+            {formatCount(awsCount)} entities across {awsInv.length} tracked services
+          </Text>
         </Flex>
-        <ServiceCatalog services={AWS_SERVICES} monitored={awsCount > 0} />
+        <ServiceCatalog services={AWS_SERVICES} inventory={awsInv} />
       </Flex>
 
       <Divider />
@@ -137,9 +226,11 @@ export const Cloud: React.FC<CloudProps> = ({ timeRange }) => {
       <Flex flexDirection="column" gap={8}>
         <Flex justifyContent="space-between" alignItems="baseline" flexWrap="wrap" gap={8}>
           <Heading level={3}>Microsoft Azure</Heading>
-          <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued }}>{formatCount(azureCount)} virtual machines monitored</Text>
+          <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued }}>
+            {formatCount(azureCount)} entities across {azureInv.length} tracked services
+          </Text>
         </Flex>
-        <ServiceCatalog services={AZURE_SERVICES} monitored={azureCount > 0} />
+        <ServiceCatalog services={AZURE_SERVICES} inventory={azureInv} />
       </Flex>
 
       <Divider />
@@ -148,9 +239,12 @@ export const Cloud: React.FC<CloudProps> = ({ timeRange }) => {
       <Flex flexDirection="column" gap={8}>
         <Flex justifyContent="space-between" alignItems="baseline" flexWrap="wrap" gap={8}>
           <Heading level={3}>Google Cloud</Heading>
-          <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued }}>{formatCount(gcpCount)} compute instances monitored</Text>
+          <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued }}>
+            {formatCount(gcpCount)} entities across {gcpInv.length} tracked services
+            {gcpProjects > 0 ? ` · ${gcpProjects} project connected` : ""}
+          </Text>
         </Flex>
-        <ServiceCatalog services={GCP_SERVICES} monitored={gcpCount > 0} />
+        <ServiceCatalog services={GCP_SERVICES} inventory={gcpInv} />
       </Flex>
     </Flex>
   );
