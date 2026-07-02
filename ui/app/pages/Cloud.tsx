@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Surface, Flex, Grid, Divider } from "@dynatrace/strato-components/layouts";
 import { Heading, Text } from "@dynatrace/strato-components/typography";
 import Colors from "@dynatrace/strato-design-tokens/colors";
@@ -14,7 +14,9 @@ import {
   gcpInventoryQuery,
   gcpProjectsCountQuery,
   metricsDpsBillingQuery,
+  CLOUD_SERVICES,
 } from "../queries";
+import { CloudServiceSheet } from "./CloudServiceSheet";
 import { useLang } from "../context/LanguageContext";
 import { kpiInfo } from "../i18n/kpiInfo";
 import type { TimeRangeOption } from "../types";
@@ -55,7 +57,11 @@ const GCP_SERVICES = [
   "GKE", "Cloud Run", "Load Balancing", "Pub/Sub", "BigQuery",
 ];
 
-const ServiceCatalog: React.FC<{ services: string[]; inventory: InventoryRow[] }> = ({ services, inventory }) => {
+const ServiceCatalog: React.FC<{
+  services: string[];
+  inventory: InventoryRow[];
+  onSelect: (svcKey: string) => void;
+}> = ({ services, inventory, onSelect }) => {
   const byName = new Map(inventory.map((r) => [r.svc, r.count]));
   return (
     <Grid gridTemplateColumns="repeat(auto-fill, minmax(170px, 1fr))" gap={8}>
@@ -63,8 +69,29 @@ const ServiceCatalog: React.FC<{ services: string[]; inventory: InventoryRow[] }
         const count = byName.get(s);
         const tracked = count !== undefined;
         const monitored = tracked && count > 0;
+        // Tile is clickable only when we have a query for it (present in CLOUD_SERVICES).
+        // Untracked catalog entries render as static Surface (no drill-down target).
+        const canDrill = Boolean(CLOUD_SERVICES[s]);
+        const style: React.CSSProperties = {
+          padding: "10px 12px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 2,
+          cursor: canDrill ? "pointer" : "default",
+        };
+        const handleActivate = () => { if (canDrill) onSelect(s); };
         return (
-          <Surface key={s} elevation="flat" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 2 }}>
+          <Surface
+            key={s}
+            elevation="flat"
+            style={style}
+            onClick={canDrill ? handleActivate : undefined}
+            onKeyDown={canDrill ? (e: React.KeyboardEvent) => {
+              if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleActivate(); }
+            } : undefined}
+            role={canDrill ? "button" : undefined}
+            tabIndex={canDrill ? 0 : undefined}
+          >
             <Flex justifyContent="space-between" alignItems="baseline" gap={6}>
               <Text textStyle="small-emphasized" style={{ color: Colors.Text.Neutral.Default }}>{s}</Text>
               {tracked && (
@@ -74,7 +101,7 @@ const ServiceCatalog: React.FC<{ services: string[]; inventory: InventoryRow[] }
               )}
             </Flex>
             <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued, fontSize: "11px" }}>
-              {monitored ? "monitored" : tracked ? "no entities" : "not tracked"}
+              {monitored ? "monitored · click for details" : tracked ? "no entities" : "not tracked"}
             </Text>
           </Surface>
         );
@@ -87,6 +114,8 @@ export const Cloud: React.FC<CloudProps> = ({ timeRange }) => {
   const { t } = useLang();
   const { money: formatCurrency } = useCurrency();
   const rateCard = useRateCard();
+  // Which service tile is currently drilled into (null = sheet closed).
+  const [selectedSvc, setSelectedSvc] = useState<string | null>(null);
 
   const awsQ    = useDql(useMemo(() => awsInventoryQuery(),   []));
   const azureQ  = useDql(useMemo(() => azureInventoryQuery(), []));
@@ -217,7 +246,7 @@ export const Cloud: React.FC<CloudProps> = ({ timeRange }) => {
             {formatCount(awsCount)} entities across {awsInv.length} tracked services
           </Text>
         </Flex>
-        <ServiceCatalog services={AWS_SERVICES} inventory={awsInv} />
+        <ServiceCatalog services={AWS_SERVICES} inventory={awsInv} onSelect={setSelectedSvc} />
       </Flex>
 
       <Divider />
@@ -230,7 +259,7 @@ export const Cloud: React.FC<CloudProps> = ({ timeRange }) => {
             {formatCount(azureCount)} entities across {azureInv.length} tracked services
           </Text>
         </Flex>
-        <ServiceCatalog services={AZURE_SERVICES} inventory={azureInv} />
+        <ServiceCatalog services={AZURE_SERVICES} inventory={azureInv} onSelect={setSelectedSvc} />
       </Flex>
 
       <Divider />
@@ -244,8 +273,11 @@ export const Cloud: React.FC<CloudProps> = ({ timeRange }) => {
             {gcpProjects > 0 ? ` · ${gcpProjects} project connected` : ""}
           </Text>
         </Flex>
-        <ServiceCatalog services={GCP_SERVICES} inventory={gcpInv} />
+        <ServiceCatalog services={GCP_SERVICES} inventory={gcpInv} onSelect={setSelectedSvc} />
       </Flex>
+
+      {/* Side sheet with the drill-down list of entities for the selected service. */}
+      <CloudServiceSheet serviceKey={selectedSvc} onDismiss={() => setSelectedSvc(null)} />
     </Flex>
   );
 };

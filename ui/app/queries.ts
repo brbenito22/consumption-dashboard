@@ -498,6 +498,77 @@ fetch \`dt.entity.cloud:gcp:project\`
 `.trim();
 
 /**
+ * Cloud service class — used by the entity drill-down sheet to decide which
+ * disclaimer to show. `hostBacked` runs OneAgent and has authoritative
+ * per-host cost in the Infrastructure & K8s tab; `managed` is monitored via
+ * CloudWatch / Azure Monitor / Google Cloud and has no per-service SKU.
+ */
+export type CloudServiceClass = "hostBacked" | "managed";
+
+export interface CloudServiceMeta {
+  /** Provider bucket used to group tiles in the UI. */
+  provider: "AWS" | "Azure" | "GCP";
+  /** Display label shown in the tile and in the Sheet header. */
+  label: string;
+  /** DQL entity type — with backticks already applied when required. */
+  entityRef: string;
+  /** Cost-attribution model — see `CloudServiceClass`. */
+  cls: CloudServiceClass;
+}
+
+/**
+ * Canonical service registry — the ONLY place service metadata lives.
+ * `Cloud.tsx` reads this to render tiles + open the drill-down Sheet.
+ * Keys mirror the `svc` label produced by the inventory queries above so the
+ * inventory row → service metadata lookup is a straight `Map.get(row.svc)`.
+ *
+ * Entity types validated against `dt.semantic_dictionary.models`; GCP types
+ * (namespace `cloud:gcp:*`) require the backticks retained inside the string.
+ */
+export const CLOUD_SERVICES: Record<string, CloudServiceMeta> = {
+  // AWS
+  "EC2":              { provider: "AWS",   label: "EC2",              entityRef: "dt.entity.ec2_instance",                cls: "hostBacked" },
+  "Lambda":           { provider: "AWS",   label: "Lambda",           entityRef: "dt.entity.aws_lambda_function",         cls: "managed"    },
+  "RDS":              { provider: "AWS",   label: "RDS",              entityRef: "dt.entity.relational_database_service", cls: "managed"    },
+  "ELB (classic)":    { provider: "AWS",   label: "ELB (classic)",    entityRef: "dt.entity.elastic_load_balancer",       cls: "managed"    },
+  "ALB":              { provider: "AWS",   label: "ALB",              entityRef: "dt.entity.aws_application_load_balancer", cls: "managed"  },
+  "NLB":              { provider: "AWS",   label: "NLB",              entityRef: "dt.entity.aws_network_load_balancer",   cls: "managed"    },
+  "EBS":              { provider: "AWS",   label: "EBS",              entityRef: "dt.entity.ebs_volume",                  cls: "managed"    },
+  // Azure
+  "Virtual Machines": { provider: "Azure", label: "Virtual Machines", entityRef: "dt.entity.azure_vm",                    cls: "hostBacked" },
+  "Functions":        { provider: "Azure", label: "Functions",        entityRef: "dt.entity.azure_function_app",          cls: "managed"    },
+  "SQL Database":     { provider: "Azure", label: "SQL Database",     entityRef: "dt.entity.azure_sql_database",          cls: "managed"    },
+  "Cosmos DB":        { provider: "Azure", label: "Cosmos DB",        entityRef: "dt.entity.azure_cosmos_db",             cls: "managed"    },
+  "Storage":          { provider: "Azure", label: "Storage",          entityRef: "dt.entity.azure_storage_account",       cls: "managed"    },
+  "Web App":          { provider: "Azure", label: "Web App",          entityRef: "dt.entity.azure_web_app",               cls: "managed"    },
+  "Load Balancer":    { provider: "Azure", label: "Load Balancer",    entityRef: "dt.entity.azure_load_balancer",         cls: "managed"    },
+  "Redis":            { provider: "Azure", label: "Redis",            entityRef: "dt.entity.azure_redis_cache",           cls: "managed"    },
+  // GCP (namespace uses colons — backticks required in the entity reference)
+  "Compute Engine":   { provider: "GCP",   label: "Compute Engine",   entityRef: "`dt.entity.cloud:gcp:gce_instance`",    cls: "hostBacked" },
+  "Cloud Functions":  { provider: "GCP",   label: "Cloud Functions",  entityRef: "`dt.entity.cloud:gcp:cloud_function`", cls: "managed"    },
+  "Cloud SQL":        { provider: "GCP",   label: "Cloud SQL",        entityRef: "`dt.entity.cloud:gcp:cloudsql_database`", cls: "managed" },
+  "Cloud Storage":    { provider: "GCP",   label: "Cloud Storage",    entityRef: "`dt.entity.cloud:gcp:gcs_bucket`",     cls: "managed"    },
+  "GKE":              { provider: "GCP",   label: "GKE",              entityRef: "`dt.entity.cloud:gcp:k8s_cluster`",    cls: "managed"    },
+};
+
+/**
+ * Entity list for a cloud service tile drill-down.
+ * Returns a DQL query that lists at most 200 entities of the given service
+ * with universally-safe fields (`id`, `entity.name`). Sorting is by name so
+ * the DataTable renders deterministically across runs.
+ */
+export const cloudServiceEntitiesQuery = (svcKey: string): string | null => {
+  const meta = CLOUD_SERVICES[svcKey];
+  if (!meta) return null;
+  return `
+fetch ${meta.entityRef}
+| fields id, name = entity.name
+| sort name asc
+| limit 200
+`.trim();
+};
+
+/**
  * Metrics DPS billing — cloud-service metric consumption in DPS-priced tenants.
  *
  * On DPS-priced tenants `builtin:billing.ddu.metrics.byEntity`

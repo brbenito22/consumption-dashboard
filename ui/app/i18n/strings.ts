@@ -222,6 +222,25 @@ export const STRINGS = {
     en: "No cloud provider integration is currently active in this environment. Connect AWS (CloudWatch / metric streams), Azure Monitor or Google Cloud, or deploy OneAgent on cloud hosts, and their instances, services and consumption will populate automatically.",
     pt: "Nenhuma integração de provedor de cloud está ativa neste ambiente. Conecte AWS (CloudWatch / metric streams), Azure Monitor ou Google Cloud, ou instale OneAgent em hosts de cloud, e as instâncias, serviços e consumo aparecerão automaticamente.",
   },
+  // ── Cloud service drill-down sheet ────────────────────────────────────────
+  "cloud.sheet.entities": { en: "Entities", pt: "Entidades" },
+  "cloud.sheet.close":    { en: "Close",    pt: "Fechar"    },
+  "cloud.sheet.empty": {
+    en: "No entities for this service in the current tenant.",
+    pt: "Sem entidades para este serviço no tenant atual.",
+  },
+  "cloud.sheet.errorLoading": {
+    en: "Could not load entities for this service.",
+    pt: "Não foi possível carregar as entidades deste serviço.",
+  },
+  "cloud.sheet.noteHostBacked": {
+    en: "Hosts backed by OneAgent (EC2 / Azure VM / GCE). Their per-host billing (Full-Stack GiB-hours or Infrastructure host-hours × rate card) is already attributed on the Infrastructure & K8s tab — this drill-down deliberately omits a cost column to avoid double counting.",
+    pt: "Hosts com OneAgent (EC2 / Azure VM / GCE). O billing por host (Full-Stack GiB-horas ou Infrastructure host-horas × rate card) já está atribuído na aba Infrastructure & K8s — esta drill-down omite a coluna de custo de propósito para não duplicar contagem.",
+  },
+  "cloud.sheet.noteManaged": {
+    en: "Managed service monitored via the cloud provider integration (CloudWatch / Azure Monitor / Google Cloud). There is no per-service billing SKU: metric consumption is billed as “Metrics - Ingest & Process” aggregate — see the Cloud metrics section above for the total.",
+    pt: "Serviço gerenciado monitorado pela integração do provedor (CloudWatch / Azure Monitor / Google Cloud). Não existe SKU de billing por serviço: o consumo de métricas é cobrado como agregado “Metrics - Ingest & Process” — veja a seção de Cloud metrics acima para o total.",
+  },
   // Cloud
   "kpi.totalCloudInstances.title": { en: "Total Cloud Instances", pt: "Total de Instâncias Cloud" },
   "kpi.totalCloudInstances.body": {
