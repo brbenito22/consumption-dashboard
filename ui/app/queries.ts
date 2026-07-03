@@ -214,10 +214,13 @@ fetch dt.entity.host
 | summarize total = count()
 `.trim();
 
-/** Detailed host inventory — confirmed fields for this environment. */
+/** Detailed host inventory — confirmed fields for this environment.
+ *  `cloudType` added to surface cloud provenance in the inventory table.
+ *  Same `fetch dt.entity.host` — entity data is not priced per byte scanned,
+ *  so adding this field is effectively zero-cost. */
 export const hostListDetailQuery = () => `
 fetch dt.entity.host
-| fields id, name = entity.name, monitoringMode, osType, osVersion, cpuCores, memoryTotal, hostGroupName, networkZone
+| fields id, name = entity.name, monitoringMode, osType, osVersion, cpuCores, memoryTotal, hostGroupName, networkZone, cloudType
 | sort name asc
 | limit 200
 `.trim();

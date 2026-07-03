@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Flex, Grid, Divider } from "@dynatrace/strato-components/layouts";
 import { Heading, Text } from "@dynatrace/strato-components/typography";
 import { MeterbarIcon } from "@dynatrace/strato-icons";
@@ -71,6 +71,46 @@ interface HostRow {
   cpuCores?: unknown;
   memoryTotal?: unknown;
   hostGroupName?: unknown;
+  /**
+   * Raw `dt.entity.host.cloudType`. Known values in real tenants:
+   * `EC2`, `AZURE`, `GOOGLE_CLOUD_PLATFORM`, `KUBERNETES`, `OPENSHIFT`, `OTHER`.
+   * `null` / missing → on-premises or non-cloud virtualization.
+   */
+  cloudType?: unknown;
+}
+
+/** Human-readable cloud label + short badge for the inventory table. */
+function cloudProvider(cloudType: string | null | undefined): { label: string; short: string; isCloud: boolean } {
+  const raw = (cloudType ?? "").toString().trim();
+  if (!raw) return { label: "On-premises",     short: "on-prem", isCloud: false };
+  switch (raw) {
+    case "EC2":                    return { label: "AWS EC2",         short: "AWS",   isCloud: true };
+    case "AZURE":                  return { label: "Azure VM",        short: "Azure", isCloud: true };
+    case "GOOGLE_CLOUD_PLATFORM":  return { label: "GCP Compute Engine", short: "GCP",   isCloud: true };
+    case "KUBERNETES":             return { label: "Kubernetes",      short: "K8s",   isCloud: false };
+    case "OPENSHIFT":              return { label: "OpenShift",       short: "OCP",   isCloud: false };
+    case "OTHER":                  return { label: "Other cloud",     short: "cloud", isCloud: true };
+    default:                       return { label: raw,               short: raw,     isCloud: true };
+  }
+}
+
+function cloudBadge(cloudType: string | null | undefined) {
+  const { label, short, isCloud } = cloudProvider(cloudType);
+  return (
+    <span
+      title={label}
+      style={{
+        fontSize: "11px",
+        fontWeight: 600,
+        padding: "2px 8px",
+        borderRadius: 10,
+        color:      isCloud ? Colors.Text.Primary.Default : Colors.Text.Neutral.Subdued,
+        background: isCloud ? Colors.Background.Field.Primary.Emphasized : Colors.Background.Container.Neutral.Default,
+      }}
+    >
+      {short}
+    </span>
+  );
 }
 
 // ── Reusable cell styles ────────────────────────────────────────────────────────
@@ -220,6 +260,29 @@ export const Infrastructure: React.FC<InfrastructureProps> = ({ timeRange }) => 
     return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
   }, [cpuByName]);
 
+  // ── Cloud-inherited hosts (derived from the SAME hosts query — zero extra Grail cost) ───
+  interface CloudSummary { total: number; byProvider: Map<string, number> }
+  const cloudSummary: CloudSummary = useMemo(() => {
+    const byProvider = new Map<string, number>();
+    let total = 0;
+    for (const h of hosts) {
+      const { short, isCloud } = cloudProvider(h.cloudType as string | undefined);
+      if (!isCloud) continue;
+      total++;
+      byProvider.set(short, (byProvider.get(short) ?? 0) + 1);
+    }
+    return { total, byProvider };
+  }, [hosts]);
+
+  const [cloudFilter, setCloudFilter] = useState<"all" | "cloud" | "onprem">("all");
+  const hostsFiltered = useMemo(() => {
+    if (cloudFilter === "all") return hosts;
+    return hosts.filter((h) => {
+      const c = cloudProvider(h.cloudType as string | undefined).isCloud;
+      return cloudFilter === "cloud" ? c : !c;
+    });
+  }, [hosts, cloudFilter]);
+
   const k8sClusters   = singleCount(k8sClustersQ.data as Record<string, unknown>[], "clusters");
   const k8sNodes      = singleCount(k8sNodeQ.data as Record<string, unknown>[], "total");
   const k8sWorkloads  = singleCount(k8sWlQ.data as Record<string, unknown>[], "total");
@@ -299,6 +362,22 @@ export const Infrastructure: React.FC<InfrastructureProps> = ({ timeRange }) => 
           {vmCount > 0 && (
             <KpiCard label="Virtual Machines" value={formatCount(vmCount)} subLabel="hypervisor VMs" isLoading={vmQ.isLoading} error={vmQ.error} info={kpiInfo(t, "virtualMachines")} />
           )}
+          <KpiCard
+            label="Cloud-Inherited Hosts"
+            value={hostsQ.isLoading ? "…" : formatCount(cloudSummary.total)}
+            subLabel={
+              cloudSummary.total === 0
+                ? "no cloud hosts detected"
+                : [...cloudSummary.byProvider.entries()]
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([p, c]) => `${c} ${p}`)
+                    .join(" · ")
+            }
+            isLoading={hostsQ.isLoading}
+            error={hostsQ.error}
+            colorVariant="positive"
+            icon={consumptionIcon}
+          />
         </Flex>
       </Flex>
 
@@ -310,19 +389,50 @@ export const Infrastructure: React.FC<InfrastructureProps> = ({ timeRange }) => 
         <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued }}>
           License consumption per host from billing usage events (Full-Stack gibibyte-hours / Infrastructure host-hours),
           priced with the {rateCard.source === "account" ? "account" : "default"} rate card. Window: last {timeRange.hours}h.
+          The <strong>Cloud</strong> column shows hosts inherited from a cloud provider (OneAgent installed on EC2 / Azure VM / GCE); the
+          <strong> Mode</strong> column shows how each is being monitored (Full-Stack, Infrastructure, …). The same license quantity
+          also drives the per-tile drill-down on the Cloud tab (not double-billed).
         </Text>
+        {/* Client-side filter — zero Grail cost. Reuses the same fetched hosts. */}
+        <Flex gap={6} alignItems="center">
+          {(["all", "cloud", "onprem"] as const).map((key) => {
+            const active = cloudFilter === key;
+            const label = key === "all" ? `All (${hosts.length})`
+                       : key === "cloud" ? `Cloud only (${cloudSummary.total})`
+                       :                    `On-prem only (${hosts.length - cloudSummary.total})`;
+            return (
+              <button
+                key={key}
+                onClick={() => setCloudFilter(key)}
+                style={{
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  padding: "4px 10px",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  border: `1px solid ${active ? Colors.Border.Primary.Accent : Colors.Border.Neutral.Default}`,
+                  background: active ? Colors.Background.Field.Primary.Emphasized : "transparent",
+                  color:      active ? Colors.Text.Primary.Default : Colors.Text.Neutral.Default,
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </Flex>
         {hostsQ.error ? (
           <Text style={{ color: "var(--dt-color-text-critical)" }}>Failed to load hosts: {hostsQ.error}</Text>
         ) : hostsQ.isLoading ? (
           <Text style={{ color: "var(--dt-color-text-subdued)" }}>Loading hosts…</Text>
-        ) : hosts.length === 0 ? (
-          <Text style={{ color: "var(--dt-color-text-subdued)" }}>No hosts found.</Text>
+        ) : hostsFiltered.length === 0 ? (
+          <Text style={{ color: "var(--dt-color-text-subdued)" }}>{hosts.length === 0 ? "No hosts found." : "No hosts match the current filter."}</Text>
         ) : (
           <div style={{ overflowX: "auto", borderRadius: 6, border: `1px solid ${Colors.Border.Neutral.Default}` }}>
-            <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1080 }}>
+            <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1180 }}>
               <thead>
                 <tr>
                   <th style={{ ...headCell, textAlign: "left" }}>Host</th>
+                  <th style={{ ...headCell, textAlign: "left" }}>Cloud</th>
                   <th style={{ ...headCell, textAlign: "left" }}>OS</th>
                   <th style={{ ...headCell, textAlign: "left" }}>Mode</th>
                   <th style={{ ...headCell, textAlign: "right" }}>Cores</th>
@@ -335,12 +445,13 @@ export const Infrastructure: React.FC<InfrastructureProps> = ({ timeRange }) => 
                 </tr>
               </thead>
               <tbody>
-                {hosts.map((h, i) => {
+                {hostsFiltered.map((h, i) => {
                   const name = String(h.name ?? "—");
                   const lic = licenseByHost.get(String(h.id ?? ""));
                   return (
                     <tr key={String(h.id ?? i)}>
                       <td style={{ ...cellBase, fontWeight: 600, color: Colors.Text.Neutral.Default }}>{name}</td>
+                      <td style={cellBase}>{cloudBadge(h.cloudType as string | undefined)}</td>
                       <td style={{ ...cellBase, color: Colors.Text.Neutral.Subdued }}>
                         {String(h.osType ?? "—")}{h.osVersion ? ` · ${String(h.osVersion)}` : ""}
                       </td>
