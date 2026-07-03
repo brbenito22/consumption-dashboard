@@ -171,7 +171,7 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ timeRange }) =
       {/* ── How to capture the account rate card ─────────────────────────────── */}
       <Surface
         elevation="flat"
-        color={rateCard.source === "account" ? "success" : "primary"}
+        color={rateCard.source === "account" ? "success" : "warning"}
         style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}
       >
         <Flex justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={8}>
