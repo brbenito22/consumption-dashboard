@@ -272,6 +272,14 @@ export const STRINGS = {
   },
   "billing.appCostSingle": { en: "single user · daily",       pt: "um usuário · diário"    },
   "billing.appCostTeam":   { en: "team of 10 · daily",         pt: "time de 10 · diário"    },
+  "billing.appCostSourceAccount": {
+    en: "Priced with your account rate card — reflects your real contract prices.",
+    pt: "Precificado com o rate card da sua conta — reflete os preços reais do contrato.",
+  },
+  "billing.appCostSourceDefault": {
+    en: "Priced with the default rate card (list price). Configure your account rate card at the top of this tab to see the real contract number.",
+    pt: "Precificado com o rate card padrão (list price). Configure o rate card da sua conta no topo desta aba para ver o número real do contrato.",
+  },
   // Cloud
   "kpi.totalCloudInstances.title": { en: "Total Cloud Instances", pt: "Total de Instâncias Cloud" },
   "kpi.totalCloudInstances.body": {

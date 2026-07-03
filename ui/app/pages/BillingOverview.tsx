@@ -339,6 +339,19 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ timeRange }) =
           <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued, fontSize: 11, lineHeight: 1.45 }}>
             {t("billing.appCostNote")}
           </Text>
+          <Text
+            textStyle="small"
+            style={{
+              color: rateCard.source === "account" ? Colors.Text.Success.Default : Colors.Text.Warning.Default,
+              fontSize: 11,
+              fontWeight: 600,
+              lineHeight: 1.45,
+            }}
+          >
+            {rateCard.source === "account"
+              ? t("billing.appCostSourceAccount")
+              : t("billing.appCostSourceDefault")}
+          </Text>
         </Surface>
       </Grid>
     </Flex>
