@@ -252,6 +252,26 @@ export const STRINGS = {
     en: "Hosts are present but the window has no BILLING_USAGE_EVENT contributions — either the timeframe is too short for a snapshot to have arrived, or these hosts are not on a billed monitoring mode (Full-Stack / Infrastructure / Foundation & Discovery / Runtime Vulnerability / Kubernetes Platform).",
     pt: "Hosts existem mas a janela não tem eventos BILLING_USAGE_EVENT contribuindo — ou o timeframe é curto demais para ter um snapshot, ou estes hosts não estão em um modo de monitoramento cobrado (Full-Stack / Infrastructure / Foundation & Discovery / Runtime Vulnerability / Kubernetes Platform).",
   },
+
+  // ── Billing tab — bottom safeguard + app-cost callout ─────────────────────
+  "billing.disclaimerTitle": {
+    en: "About these figures",
+    pt: "Sobre estes valores",
+  },
+  "billing.disclaimer": {
+    en: "The cost shown on this tab is reconstructed from Dynatrace's own metering (BILLING_USAGE_EVENT) × your contract rate card to give per-capability, per-host, per-namespace and per-offender granularity the billing API does not expose. Differences of about 1%/day against the Dynatrace Official Cost are expected: the time windows are not identical (the official value covers Dynatrace's billing period, not the timeframe selected here) and metering aggregates in snapshots. This app is an analysis and attribution tool — it does not replace the official invoice. For financial decisions, always cross-check with Dynatrace Cost Management.",
+    pt: "O custo mostrado nesta aba é reconstruído a partir do metering do Dynatrace (BILLING_USAGE_EVENT) × o rate card do contrato para dar granularidade por capability, host, namespace e ofensor que a API de faturamento não expõe. Divergências de ~1%/dia em relação ao Dynatrace Official Cost são esperadas: as janelas de tempo não são idênticas (o valor oficial cobre o período de faturamento do Dynatrace, não o timeframe selecionado aqui) e o metering agrega em snapshots. Este app é uma ferramenta de análise e atribuição — não substitui a fatura oficial. Para decisões financeiras, valide sempre contra o Cost Management do Dynatrace.",
+  },
+  "billing.appCostTitle": {
+    en: "Cost Center — annual running cost",
+    pt: "Cost Center — custo anual do app",
+  },
+  "billing.appCostNote": {
+    en: "Rough estimate: ~30 GiB scanned per full user session (Overview + Observability + Billing + Predictions), priced with Log Management & Analytics – Query. Real cost varies with tenant data volume and usage frequency.",
+    pt: "Estimativa aproximada: ~30 GiB escaneados por sessão completa (Overview + Observability + Billing + Predictions), precificados com Log Management & Analytics – Query. O custo real varia com o volume de dados do tenant e a frequência de uso.",
+  },
+  "billing.appCostSingle": { en: "single user · daily",       pt: "um usuário · diário"    },
+  "billing.appCostTeam":   { en: "team of 10 · daily",         pt: "time de 10 · diário"    },
   // Cloud
   "kpi.totalCloudInstances.title": { en: "Total Cloud Instances", pt: "Total de Instâncias Cloud" },
   "kpi.totalCloudInstances.body": {

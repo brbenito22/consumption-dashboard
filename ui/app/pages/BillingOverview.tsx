@@ -14,7 +14,17 @@ import { computeCost, type BillingDetailRow } from "../utils/costEngine";
 import { billingDetailByTypeQuery } from "../queries";
 import { rateCardSettingsUrl } from "../utils/settingsLink";
 import { chartColor } from "../constants/palette";
+import { normalizeCapabilityName } from "../constants/rateCard";
 import { TIME_RANGE_OPTIONS, type TimeRangeOption } from "../types";
+
+// ── Cost Center app self-cost estimate constants ────────────────────────────
+// Rough GiB scanned per full user session across all tabs the app renders
+// (Overview + Applications + Observability + Billing + Predictions + Cloud +
+// Infrastructure). Anchored on the fact that the heavy queries are the raw
+// `fetch logs` / `fetch spans` calls, which dominate the scan budget. This is
+// intentionally rough — the point is to show an order of magnitude.
+const APP_GIB_SCANNED_PER_SESSION = 30;
+const APP_SESSIONS_PER_DAY        = 1;   // "daily user" scenario
 
 interface BillingOverviewProps { timeRange: TimeRangeOption; }
 
@@ -120,6 +130,16 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ timeRange }) =
     return `${fmtNum(row.quantity, 2)} ${row.unitLabel} · ${unitPrice(row.pricePerUnit)}/${row.unitLabel.replace(/s$/, "")}`;
   };
   const zeroUsageCount = breakdown.rows.filter(r => !r.unmatched && r.quantity === 0).length;
+
+  // ── Cost Center app self-cost estimate ─────────────────────────────────────
+  // Priced from Log Management & Analytics – Query rate (rate card already
+  // fetched above via `useRateCard`). Rate card exposes `price` normalized to
+  // "USD per unit of `quotedUnitOfMeasure`", and Query is quoted "per 1M GiB
+  // scanned" → single-GiB price = rate.price / 1_000_000.
+  const logQueryRate = rateCard.ratesByName.get(normalizeCapabilityName("Log Management & Analytics - Query"));
+  const perGibScanPrice = logQueryRate ? logQueryRate.price / 1_000_000 : 0.0035 / 1_000_000;
+  const singleUserAnnualCost = APP_GIB_SCANNED_PER_SESSION * APP_SESSIONS_PER_DAY * 365 * perGibScanPrice;
+  const teamAnnualCost       = singleUserAnnualCost * 10;
 
   return (
     <Flex flexDirection="column" gap={24} padding={24}>
@@ -271,6 +291,56 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ timeRange }) =
           units not exposed here. Values under {money(0.01)} are shown as "&lt; {money(0.01)}".
         </Text>
       )}
+
+      <Divider />
+
+      {/* ── Footer: safeguard note (left) + app self-cost estimate (right) ─── */}
+      <Grid gridTemplateColumns="repeat(auto-fit, minmax(340px, 1fr))" gap={16}>
+        {/* Safeguard note — explains the ~1% vs Dynatrace Official Cost and the
+            app's purpose. Kept short & explicit to cover us against being read
+            as an authoritative invoice. */}
+        <Surface
+          elevation="flat"
+          color="primary"
+          style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 8 }}
+        >
+          <Heading level={5} style={{ margin: 0 }}>{t("billing.disclaimerTitle")}</Heading>
+          <Text textStyle="small" style={{ color: Colors.Text.Neutral.Default, lineHeight: 1.55 }}>
+            {t("billing.disclaimer")}
+          </Text>
+        </Surface>
+
+        {/* App self-cost — rough estimate of what running Cost Center itself
+            costs (Grail query scan × Log Query rate). */}
+        <Surface
+          elevation="flat"
+          color="primary"
+          style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}
+        >
+          <Heading level={5} style={{ margin: 0 }}>{t("billing.appCostTitle")}</Heading>
+          <Flex flexDirection="column" gap={6}>
+            <Flex justifyContent="space-between" alignItems="baseline" gap={8}>
+              <Text textStyle="base-emphasized" style={{ color: Colors.Text.Neutral.Default }}>
+                {rateCard.isLoading ? "…" : money(singleUserAnnualCost)}
+              </Text>
+              <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued }}>
+                {t("billing.appCostSingle")}
+              </Text>
+            </Flex>
+            <Flex justifyContent="space-between" alignItems="baseline" gap={8}>
+              <Text textStyle="base-emphasized" style={{ color: Colors.Text.Neutral.Default }}>
+                {rateCard.isLoading ? "…" : money(teamAnnualCost)}
+              </Text>
+              <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued }}>
+                {t("billing.appCostTeam")}
+              </Text>
+            </Flex>
+          </Flex>
+          <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued, fontSize: 11, lineHeight: 1.45 }}>
+            {t("billing.appCostNote")}
+          </Text>
+        </Surface>
+      </Grid>
     </Flex>
   );
 };
