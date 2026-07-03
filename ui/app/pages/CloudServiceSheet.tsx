@@ -6,12 +6,13 @@ import { Surface, Flex } from "@dynatrace/strato-components/layouts";
 import { Heading, Text } from "@dynatrace/strato-components/typography";
 import Colors from "@dynatrace/strato-design-tokens/colors";
 import { useDql } from "../hooks/useDql";
-import { useRateCard } from "../hooks/useRateCard";
+import { useRateCard, type CapabilityRate } from "../hooks/useRateCard";
 import { useCurrency } from "../context/CurrencyContext";
 import { normalizeCapabilityName } from "../constants/rateCard";
 import {
   cloudServiceEntitiesQuery,
-  cloudHostCostByEntityQuery,
+  cloudHostsListQuery,
+  cloudHostsBillingByCapQuery,
   CLOUD_SERVICES,
 } from "../queries";
 import { useLang } from "../context/LanguageContext";
@@ -26,15 +27,20 @@ interface CloudServiceSheetProps {
 }
 
 interface ManagedRow { id: string; name: string }
+interface HostRow    { id: string; name: string }
+interface BillingRow {
+  id: string;
+  cap: string;
+  gib_hours: number;
+  host_hours: number;
+  pod_hours: number;
+}
 interface HostBackedRow {
   id: string;
   name: string;
-  gib_hours: number;
-  host_hours: number;
   cost: number;
-  /** Pre-formatted strings for DataTable display (formatter API is deprecated). */
-  gib_hours_fmt: string;
-  host_hours_fmt: string;
+  /** Comma-joined list of capabilities that contributed cost — for tooltip / debug. */
+  caps: string;
   cost_fmt: string;
 }
 
@@ -43,6 +49,25 @@ const n = (v: unknown): number => {
   return isFinite(x) ? x : 0;
 };
 
+/**
+ * Cost of a single billing row given the rate for its capability.
+ * The rate's `unit` decides which quantity field on the row is priced —
+ * this is how the same query row can price capabilities as different as
+ * Full-Stack (gib-hours) and Kubernetes Platform (pod-hours) correctly.
+ */
+function priceBillingRow(row: BillingRow, rate: CapabilityRate | undefined): number {
+  if (!rate) return 0;
+  switch (rate.unit) {
+    case "gib_hours":  return row.gib_hours  * rate.price;
+    case "host_hours": return row.host_hours * rate.price;
+    case "pod_hours":  return row.pod_hours  * rate.price;
+    // Cloud host billing does not surface volumes/counts as gib / gib_days /
+    // datapoints / sessions / actions / invocations / requests on the host
+    // dimension — those are per-tenant capabilities, not per-host.
+    default:           return 0;
+  }
+}
+
 export const CloudServiceSheet: React.FC<CloudServiceSheetProps> = ({ serviceKey, onDismiss, timeRange }) => {
   const { t } = useLang();
   const { money } = useCurrency();
@@ -50,23 +75,24 @@ export const CloudServiceSheet: React.FC<CloudServiceSheetProps> = ({ serviceKey
   const meta = serviceKey ? CLOUD_SERVICES[serviceKey] : undefined;
   const isHostBacked = meta?.cls === "hostBacked";
 
-  // Two queries mutually exclusive per service class. The unused one runs with
-  // an empty string, which `useDql` early-returns from — no orphan Grail scan.
+  // Managed → single query. Host-backed → 2 queries (hosts + billing per cap)
+  // merged client-side so hosts without any billing still appear in the list.
   const managedDql = useMemo(
     () => (serviceKey && meta?.cls === "managed" ? cloudServiceEntitiesQuery(serviceKey) : null),
     [serviceKey, meta?.cls],
   );
-  const hostDql = useMemo(
-    () => (serviceKey && isHostBacked ? cloudHostCostByEntityQuery(serviceKey, timeRange) : null),
+  const hostsListDql = useMemo(
+    () => (serviceKey && isHostBacked ? cloudHostsListQuery(serviceKey) : null),
+    [serviceKey, isHostBacked],
+  );
+  const hostsBillingDql = useMemo(
+    () => (serviceKey && isHostBacked ? cloudHostsBillingByCapQuery(serviceKey, timeRange) : null),
     [serviceKey, isHostBacked, timeRange],
   );
 
   const managedQ = useDql<ManagedRow>(managedDql ?? "");
-  const hostQ    = useDql<Record<string, unknown>>(hostDql ?? "");
-
-  // Rate card lookups — same names Cost Engine uses for these capabilities.
-  const fsRate    = rateCard.ratesByName.get(normalizeCapabilityName("Full-Stack Monitoring"));
-  const infraRate = rateCard.ratesByName.get(normalizeCapabilityName("Infrastructure Monitoring"));
+  const hostsListQ    = useDql<HostRow>(hostsListDql ?? "");
+  const hostsBillingQ = useDql<Record<string, unknown>>(hostsBillingDql ?? "");
 
   const managedRows: ManagedRow[] = useMemo(
     () => ((managedQ.data ?? []) as ManagedRow[]).map((r) => ({
@@ -76,31 +102,49 @@ export const CloudServiceSheet: React.FC<CloudServiceSheetProps> = ({ serviceKey
     [managedQ.data],
   );
 
+  const billingByHost: Map<string, BillingRow[]> = useMemo(() => {
+    const map = new Map<string, BillingRow[]>();
+    for (const raw of ((hostsBillingQ.data ?? []) as Record<string, unknown>[])) {
+      const row: BillingRow = {
+        id: String(raw.id ?? ""),
+        cap: String(raw.cap ?? ""),
+        gib_hours:  n(raw.gib_hours),
+        host_hours: n(raw.host_hours),
+        pod_hours:  n(raw.pod_hours),
+      };
+      if (!row.id) continue;
+      const arr = map.get(row.id) ?? [];
+      arr.push(row);
+      map.set(row.id, arr);
+    }
+    return map;
+  }, [hostsBillingQ.data]);
+
   const hostRows: HostBackedRow[] = useMemo(() => {
-    const raw = (hostQ.data ?? []) as Record<string, unknown>[];
-    return raw.map((r) => {
-      const gib_hours  = n(r.gib_hours);
-      const host_hours = n(r.host_hours);
-      const cost = gib_hours * (fsRate?.price ?? 0) + host_hours * (infraRate?.price ?? 0);
+    const hosts = (hostsListQ.data ?? []) as HostRow[];
+    return hosts.map((h) => {
+      const id = String(h.id ?? "");
+      const rows = billingByHost.get(id) ?? [];
+      let cost = 0;
+      const capSet = new Set<string>();
+      for (const row of rows) {
+        const rate = rateCard.ratesByName.get(normalizeCapabilityName(row.cap));
+        const rowCost = priceBillingRow(row, rate);
+        if (rowCost > 0) capSet.add(row.cap);
+        cost += rowCost;
+      }
       return {
-        id: String(r.id ?? ""),
-        name: String(r.name ?? "(unnamed)"),
-        gib_hours,
-        host_hours,
+        id,
+        name: String(h.name ?? "(unnamed)"),
         cost,
-        gib_hours_fmt:  gib_hours.toFixed(2),
-        host_hours_fmt: host_hours.toFixed(2),
-        cost_fmt:       money(cost),
+        caps: [...capSet].sort().join(", ") || "—",
+        cost_fmt: money(cost),
       };
     });
-  }, [hostQ.data, fsRate?.price, infraRate?.price, money]);
+  }, [hostsListQ.data, billingByHost, rateCard.ratesByName, money]);
 
-  const totalCost = useMemo(
-    () => hostRows.reduce((s, r) => s + r.cost, 0),
-    [hostRows],
-  );
+  const totalCost = useMemo(() => hostRows.reduce((s, r) => s + r.cost, 0), [hostRows]);
 
-  // DataTable columns — different shape per class.
   const managedColumns = useMemo(
     () => [
       { header: "Name",      accessor: "name" },
@@ -108,14 +152,12 @@ export const CloudServiceSheet: React.FC<CloudServiceSheetProps> = ({ serviceKey
     ],
     [],
   );
-
   const hostColumns = useMemo(
     () => [
-      { header: "Host name",              accessor: "name"           },
-      { header: "Entity ID",              accessor: "id"             },
-      { header: "GiB-hours (Full-Stack)", accessor: "gib_hours_fmt"  },
-      { header: "Host-hours (Infra)",     accessor: "host_hours_fmt" },
-      { header: "Cost (window)",          accessor: "cost_fmt"       },
+      { header: "Host name",         accessor: "name"     },
+      { header: "Entity ID",         accessor: "id"       },
+      { header: "Capabilities",      accessor: "caps"     },
+      { header: "Cost (window)",     accessor: "cost_fmt" },
     ],
     [],
   );
@@ -123,9 +165,14 @@ export const CloudServiceSheet: React.FC<CloudServiceSheetProps> = ({ serviceKey
   const isOpen = Boolean(serviceKey) && Boolean(meta);
   const title = meta ? `${meta.provider} · ${meta.label}` : "";
   const noteKey = isHostBacked ? "cloud.sheet.noteHostBacked" : "cloud.sheet.noteManaged";
-  const activeQ = isHostBacked ? hostQ : managedQ;
+  const activeIsLoading = isHostBacked
+    ? (hostsListQ.isLoading || hostsBillingQ.isLoading)
+    : managedQ.isLoading;
+  const activeError = isHostBacked
+    ? (hostsListQ.error || hostsBillingQ.error)
+    : managedQ.error;
   const totalRows = isHostBacked ? hostRows.length : managedRows.length;
-  const rateMissing = isHostBacked && (!fsRate || !infraRate);
+  const rateCoverageEmpty = isHostBacked && !activeIsLoading && hostRows.length > 0 && totalCost === 0;
 
   return (
     <Sheet
@@ -136,22 +183,21 @@ export const CloudServiceSheet: React.FC<CloudServiceSheetProps> = ({ serviceKey
     >
       {isOpen && meta && (
         <Flex flexDirection="column" gap={16} padding={16}>
-          {/* Class disclaimer — mandatory context: A → cost also on Infra tab (not double-billed);
-              B → no per-service SKU, aggregate lives in the Cloud metrics section. */}
+          {/* Class disclaimer — mandatory context. */}
           <Surface elevation="flat" color="primary" style={{ padding: "12px 14px" }}>
             <Text textStyle="small" style={{ color: Colors.Text.Neutral.Default }}>
               {t(noteKey)}
             </Text>
           </Surface>
 
-          {/* Summary row — count on both classes, total cost on host-backed only. */}
+          {/* Summary row — count + total cost when host-backed. */}
           <Flex justifyContent="space-between" alignItems="baseline" gap={8} flexWrap="wrap">
             <Heading level={5} style={{ margin: 0 }}>{t("cloud.sheet.entities")}</Heading>
             <Flex gap={16} alignItems="baseline">
               <Text textStyle="small-emphasized" style={{ color: Colors.Text.Neutral.Subdued }}>
-                {activeQ.isLoading ? "…" : `${totalRows} ${totalRows === 1 ? t("cloud.sheet.entityOne") : t("cloud.sheet.entityMany")}`}
+                {activeIsLoading ? "…" : `${totalRows} ${totalRows === 1 ? t("cloud.sheet.entityOne") : t("cloud.sheet.entityMany")}`}
               </Text>
-              {isHostBacked && !activeQ.isLoading && (
+              {isHostBacked && !activeIsLoading && (
                 <Text textStyle="small-emphasized" style={{ color: Colors.Text.Neutral.Default }}>
                   {t("cloud.sheet.totalCost")}: <span style={{ color: totalCost > 0 ? Colors.Text.Warning.Default : Colors.Text.Neutral.Default }}>{money(totalCost)}</span>
                 </Text>
@@ -159,19 +205,19 @@ export const CloudServiceSheet: React.FC<CloudServiceSheetProps> = ({ serviceKey
             </Flex>
           </Flex>
 
-          {rateMissing && (
-            <Surface elevation="flat" color="warning" style={{ padding: "10px 14px" }}>
-              <Text textStyle="small" style={{ color: Colors.Text.Warning.Default }}>
-                {t("cloud.sheet.rateMissing")}
+          {rateCoverageEmpty && (
+            <Surface elevation="flat" color="primary" style={{ padding: "10px 14px" }}>
+              <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued }}>
+                {t("cloud.sheet.zeroBilling")}
               </Text>
             </Surface>
           )}
 
-          {activeQ.error ? (
+          {activeError ? (
             <Text textStyle="small" style={{ color: Colors.Text.Critical.Default }}>
               {t("cloud.sheet.errorLoading")}
             </Text>
-          ) : totalRows === 0 && !activeQ.isLoading ? (
+          ) : totalRows === 0 && !activeIsLoading ? (
             <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued }}>
               {t("cloud.sheet.empty")}
             </Text>

@@ -575,36 +575,60 @@ fetch ${meta.entityRef}
 };
 
 /**
- * Per-host billing quantities for the CLOUD hosts of a host-backed service.
- * Joins `dt.entity.host` filtered by cloudType with the sums of billed
- * gib-hours (Full-Stack) and host-hours (Infrastructure) from
- * BILLING_USAGE_EVENT — the authoritative metering. The client multiplies
- * each row by the rate card price to render a real per-host cost column.
- *
- * IMPORTANT: this is the same quantity attributed on the Infrastructure &
- * K8s tab. It is not billed twice by Dynatrace — it is the same billing
- * quantity surfaced from two navigations. The Sheet renders a disclaimer
- * on this class of service to make that explicit to the user.
+ * List of CLOUD hosts belonging to a host-backed service (EC2 / Azure VM /
+ * GCE with OneAgent). This is the "left side" of the join used by the
+ * drill-down Sheet — hosts here appear even when they had no billing events
+ * in the window (host present, cost 0).
  */
-export const cloudHostCostByEntityQuery = (svcKey: string, tr: TimeRangeOption): string | null => {
+export const cloudHostsListQuery = (svcKey: string): string | null => {
   const meta = CLOUD_SERVICES[svcKey];
   if (!meta || meta.cls !== "hostBacked" || !meta.hostCloudType) return null;
   return `
 fetch dt.entity.host
 | filter cloudType == "${meta.hostCloudType}"
-| lookup [
-    fetch dt.system.events, from: ${tr.dqlFrom}, to: ${tr.dqlTo}
-    | filter event.kind == "BILLING_USAGE_EVENT" and (event.type == "Full-Stack Monitoring" or event.type == "Infrastructure Monitoring") and isNotNull(dt.entity.host)
-    | summarize {
-        gib_hours = sum(coalesce(billed_gibibyte_hours, 0.0)),
-        host_hours = sum(coalesce(billed_host_hours, 0.0))
-      }, by: { id = dt.entity.host }
-  ], sourceField: id, lookupField: id
-| fields id, name = entity.name, gib_hours = lookup.gib_hours, host_hours = lookup.host_hours
+| fields id, name = entity.name
 | sort name asc
 | limit 200
 `.trim();
 };
+
+/**
+ * Billing quantities per (host, capability) for the CLOUD hosts of a
+ * host-backed service. Deliberately does NOT restrict `event.type` so we
+ * capture every capability that touches `dt.entity.host` — Full-Stack,
+ * Infrastructure, Foundation & Discovery, Runtime Vulnerability, Runtime
+ * Application Protection, Kubernetes Platform Monitoring, etc. The client
+ * multiplies each row by the rate for that capability from the rate card,
+ * summing per host — this is the ONLY correct way to price a cloud host
+ * that carries multiple capabilities at once (e.g., a Full-Stack host that
+ * also has Runtime Vulnerability enabled).
+ *
+ * IMPORTANT: this is the same billing quantity that populates the
+ * Infrastructure & K8s tab. It is NOT double-billed by Dynatrace — the
+ * Sheet renders a disclaimer stating this.
+ */
+export const cloudHostsBillingByCapQuery = (svcKey: string, tr: TimeRangeOption): string | null => {
+  const meta = CLOUD_SERVICES[svcKey];
+  if (!meta || meta.cls !== "hostBacked" || !meta.hostCloudType) return null;
+  return `
+fetch dt.system.events, from: ${tr.dqlFrom}, to: ${tr.dqlTo}
+| filter event.kind == "BILLING_USAGE_EVENT" and isNotNull(dt.entity.host)
+| summarize {
+    gib_hours  = sum(coalesce(billed_gibibyte_hours, 0.0)),
+    host_hours = sum(coalesce(billed_host_hours, 0.0)),
+    pod_hours  = sum(coalesce(billed_pod_hours, 0.0))
+  }, by: { id = dt.entity.host, cap = event.type }
+| lookup [ fetch dt.entity.host | filter cloudType == "${meta.hostCloudType}" | fields id ], sourceField: id, lookupField: id
+| filter isNotNull(lookup.id)
+| fields id, cap, gib_hours, host_hours, pod_hours
+| sort id asc
+| limit 2000
+`.trim();
+};
+
+/** @deprecated superseded by `cloudHostsListQuery` + `cloudHostsBillingByCapQuery`.
+ *  Kept only to avoid breaking imports if any other page relies on this symbol. */
+export const cloudHostCostByEntityQuery = cloudHostsListQuery;
 
 /**
  * Metrics DPS billing — cloud-service metric consumption in DPS-priced tenants.

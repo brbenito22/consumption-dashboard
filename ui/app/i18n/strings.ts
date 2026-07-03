@@ -248,6 +248,10 @@ export const STRINGS = {
     en: "Full-Stack or Infrastructure rate is missing from the rate card — per-host cost cannot be computed for this service.",
     pt: "Rate de Full-Stack ou Infrastructure ausente no rate card — o custo por host não pode ser calculado para este serviço.",
   },
+  "cloud.sheet.zeroBilling": {
+    en: "Hosts are present but the window has no BILLING_USAGE_EVENT contributions — either the timeframe is too short for a snapshot to have arrived, or these hosts are not on a billed monitoring mode (Full-Stack / Infrastructure / Foundation & Discovery / Runtime Vulnerability / Kubernetes Platform).",
+    pt: "Hosts existem mas a janela não tem eventos BILLING_USAGE_EVENT contribuindo — ou o timeframe é curto demais para ter um snapshot, ou estes hosts não estão em um modo de monitoramento cobrado (Full-Stack / Infrastructure / Foundation & Discovery / Runtime Vulnerability / Kubernetes Platform).",
+  },
   // Cloud
   "kpi.totalCloudInstances.title": { en: "Total Cloud Instances", pt: "Total de Instâncias Cloud" },
   "kpi.totalCloudInstances.body": {
