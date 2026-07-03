@@ -3,7 +3,7 @@
   "app": {
     "id": "my.consumption.dashboard",
     "name": "Cost Center",
-    "version": "1.50.0",
+    "version": "1.52.0",
     "description": "Cost Center — consumption, billing and cost across Dynatrace capabilities.",
     "icon": "assets/icon.svg",
     "scopes": [
