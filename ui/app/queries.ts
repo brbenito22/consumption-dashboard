@@ -514,6 +514,12 @@ export interface CloudServiceMeta {
   entityRef: string;
   /** Cost-attribution model — see `CloudServiceClass`. */
   cls: CloudServiceClass;
+  /**
+   * For `hostBacked` services only: the `cloudType` value used by
+   * `dt.entity.host` to filter hosts running OneAgent on this cloud.
+   * `EC2`, `AZURE`, `GOOGLE_CLOUD_PLATFORM` — confirmed via `execute_dql`.
+   */
+  hostCloudType?: string;
 }
 
 /**
@@ -527,7 +533,7 @@ export interface CloudServiceMeta {
  */
 export const CLOUD_SERVICES: Record<string, CloudServiceMeta> = {
   // AWS
-  "EC2":              { provider: "AWS",   label: "EC2",              entityRef: "dt.entity.ec2_instance",                cls: "hostBacked" },
+  "EC2":              { provider: "AWS",   label: "EC2",              entityRef: "dt.entity.ec2_instance",                cls: "hostBacked", hostCloudType: "EC2" },
   "Lambda":           { provider: "AWS",   label: "Lambda",           entityRef: "dt.entity.aws_lambda_function",         cls: "managed"    },
   "RDS":              { provider: "AWS",   label: "RDS",              entityRef: "dt.entity.relational_database_service", cls: "managed"    },
   "ELB (classic)":    { provider: "AWS",   label: "ELB (classic)",    entityRef: "dt.entity.elastic_load_balancer",       cls: "managed"    },
@@ -535,7 +541,7 @@ export const CLOUD_SERVICES: Record<string, CloudServiceMeta> = {
   "NLB":              { provider: "AWS",   label: "NLB",              entityRef: "dt.entity.aws_network_load_balancer",   cls: "managed"    },
   "EBS":              { provider: "AWS",   label: "EBS",              entityRef: "dt.entity.ebs_volume",                  cls: "managed"    },
   // Azure
-  "Virtual Machines": { provider: "Azure", label: "Virtual Machines", entityRef: "dt.entity.azure_vm",                    cls: "hostBacked" },
+  "Virtual Machines": { provider: "Azure", label: "Virtual Machines", entityRef: "dt.entity.azure_vm",                    cls: "hostBacked", hostCloudType: "AZURE" },
   "Functions":        { provider: "Azure", label: "Functions",        entityRef: "dt.entity.azure_function_app",          cls: "managed"    },
   "SQL Database":     { provider: "Azure", label: "SQL Database",     entityRef: "dt.entity.azure_sql_database",          cls: "managed"    },
   "Cosmos DB":        { provider: "Azure", label: "Cosmos DB",        entityRef: "dt.entity.azure_cosmos_db",             cls: "managed"    },
@@ -544,7 +550,7 @@ export const CLOUD_SERVICES: Record<string, CloudServiceMeta> = {
   "Load Balancer":    { provider: "Azure", label: "Load Balancer",    entityRef: "dt.entity.azure_load_balancer",         cls: "managed"    },
   "Redis":            { provider: "Azure", label: "Redis",            entityRef: "dt.entity.azure_redis_cache",           cls: "managed"    },
   // GCP (namespace uses colons — backticks required in the entity reference)
-  "Compute Engine":   { provider: "GCP",   label: "Compute Engine",   entityRef: "`dt.entity.cloud:gcp:gce_instance`",    cls: "hostBacked" },
+  "Compute Engine":   { provider: "GCP",   label: "Compute Engine",   entityRef: "`dt.entity.cloud:gcp:gce_instance`",    cls: "hostBacked", hostCloudType: "GOOGLE_CLOUD_PLATFORM" },
   "Cloud Functions":  { provider: "GCP",   label: "Cloud Functions",  entityRef: "`dt.entity.cloud:gcp:cloud_function`", cls: "managed"    },
   "Cloud SQL":        { provider: "GCP",   label: "Cloud SQL",        entityRef: "`dt.entity.cloud:gcp:cloudsql_database`", cls: "managed" },
   "Cloud Storage":    { provider: "GCP",   label: "Cloud Storage",    entityRef: "`dt.entity.cloud:gcp:gcs_bucket`",     cls: "managed"    },
@@ -563,6 +569,38 @@ export const cloudServiceEntitiesQuery = (svcKey: string): string | null => {
   return `
 fetch ${meta.entityRef}
 | fields id, name = entity.name
+| sort name asc
+| limit 200
+`.trim();
+};
+
+/**
+ * Per-host billing quantities for the CLOUD hosts of a host-backed service.
+ * Joins `dt.entity.host` filtered by cloudType with the sums of billed
+ * gib-hours (Full-Stack) and host-hours (Infrastructure) from
+ * BILLING_USAGE_EVENT — the authoritative metering. The client multiplies
+ * each row by the rate card price to render a real per-host cost column.
+ *
+ * IMPORTANT: this is the same quantity attributed on the Infrastructure &
+ * K8s tab. It is not billed twice by Dynatrace — it is the same billing
+ * quantity surfaced from two navigations. The Sheet renders a disclaimer
+ * on this class of service to make that explicit to the user.
+ */
+export const cloudHostCostByEntityQuery = (svcKey: string, tr: TimeRangeOption): string | null => {
+  const meta = CLOUD_SERVICES[svcKey];
+  if (!meta || meta.cls !== "hostBacked" || !meta.hostCloudType) return null;
+  return `
+fetch dt.entity.host
+| filter cloudType == "${meta.hostCloudType}"
+| lookup [
+    fetch dt.system.events, from: ${tr.dqlFrom}, to: ${tr.dqlTo}
+    | filter event.kind == "BILLING_USAGE_EVENT" and (event.type == "Full-Stack Monitoring" or event.type == "Infrastructure Monitoring") and isNotNull(dt.entity.host)
+    | summarize {
+        gib_hours = sum(coalesce(billed_gibibyte_hours, 0.0)),
+        host_hours = sum(coalesce(billed_host_hours, 0.0))
+      }, by: { id = dt.entity.host }
+  ], sourceField: id, lookupField: id
+| fields id, name = entity.name, gib_hours = lookup.gib_hours, host_hours = lookup.host_hours
 | sort name asc
 | limit 200
 `.trim();

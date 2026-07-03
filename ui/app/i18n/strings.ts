@@ -241,6 +241,13 @@ export const STRINGS = {
     en: "Managed service monitored via the cloud provider integration (CloudWatch / Azure Monitor / Google Cloud). There is no per-service billing SKU: metric consumption is billed as “Metrics - Ingest & Process” aggregate — see the Cloud metrics section above for the total.",
     pt: "Serviço gerenciado monitorado pela integração do provedor (CloudWatch / Azure Monitor / Google Cloud). Não existe SKU de billing por serviço: o consumo de métricas é cobrado como agregado “Metrics - Ingest & Process” — veja a seção de Cloud metrics acima para o total.",
   },
+  "cloud.sheet.totalCost":  { en: "Total (window)",  pt: "Total (janela)"    },
+  "cloud.sheet.entityOne":  { en: "entity",          pt: "entidade"          },
+  "cloud.sheet.entityMany": { en: "entities",        pt: "entidades"         },
+  "cloud.sheet.rateMissing": {
+    en: "Full-Stack or Infrastructure rate is missing from the rate card — per-host cost cannot be computed for this service.",
+    pt: "Rate de Full-Stack ou Infrastructure ausente no rate card — o custo por host não pode ser calculado para este serviço.",
+  },
   // Cloud
   "kpi.totalCloudInstances.title": { en: "Total Cloud Instances", pt: "Total de Instâncias Cloud" },
   "kpi.totalCloudInstances.body": {

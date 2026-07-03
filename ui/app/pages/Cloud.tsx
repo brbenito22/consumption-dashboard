@@ -277,7 +277,11 @@ export const Cloud: React.FC<CloudProps> = ({ timeRange }) => {
       </Flex>
 
       {/* Side sheet with the drill-down list of entities for the selected service. */}
-      <CloudServiceSheet serviceKey={selectedSvc} onDismiss={() => setSelectedSvc(null)} />
+      <CloudServiceSheet
+        serviceKey={selectedSvc}
+        onDismiss={() => setSelectedSvc(null)}
+        timeRange={timeRange}
+      />
     </Flex>
   );
 };
