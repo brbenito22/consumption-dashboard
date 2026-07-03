@@ -270,8 +270,9 @@ export const STRINGS = {
     en: "Rough estimate: ~30 GiB scanned per full user session (Overview + Observability + Billing + Predictions), priced with Log Management & Analytics – Query. Real cost varies with tenant data volume and usage frequency.",
     pt: "Estimativa aproximada: ~30 GiB escaneados por sessão completa (Overview + Observability + Billing + Predictions), precificados com Log Management & Analytics – Query. O custo real varia com o volume de dados do tenant e a frequência de uso.",
   },
-  "billing.appCostSingle": { en: "single user · daily",       pt: "um usuário · diário"    },
-  "billing.appCostTeam":   { en: "team of 10 · daily",         pt: "time de 10 · diário"    },
+  "billing.appCostSingle": { en: "single user, daily use",       pt: "um usuário, uso diário"    },
+  "billing.appCostTeam":   { en: "team of 10 users, daily use",   pt: "time de 10 usuários, uso diário" },
+  "billing.appCostPerYear": { en: "/ year",                        pt: "/ ano"                   },
   "billing.appCostSourceAccount": {
     en: "Priced with your account rate card — reflects your real contract prices.",
     pt: "Precificado com o rate card da sua conta — reflete os preços reais do contrato.",

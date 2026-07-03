@@ -133,11 +133,13 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ timeRange }) =
 
   // ── Cost Center app self-cost estimate ─────────────────────────────────────
   // Priced from Log Management & Analytics – Query rate (rate card already
-  // fetched above via `useRateCard`). Rate card exposes `price` normalized to
-  // "USD per unit of `quotedUnitOfMeasure`", and Query is quoted "per 1M GiB
-  // scanned" → single-GiB price = rate.price / 1_000_000.
+  // fetched above via `useRateCard`). The rate card entry's `price` field is
+  // ALREADY normalized to "USD per single GiB scanned" (buildRates in
+  // useRateCard doesn't divide by any bulk factor — `price = Number(c.price)`
+  // straight from the API). So the annual formula is a plain multiplication:
+  //   annual = GiB_per_session × sessions_per_day × 365 × price_per_GiB
   const logQueryRate = rateCard.ratesByName.get(normalizeCapabilityName("Log Management & Analytics - Query"));
-  const perGibScanPrice = logQueryRate ? logQueryRate.price / 1_000_000 : 0.0035 / 1_000_000;
+  const perGibScanPrice = logQueryRate?.price ?? 0.0035;
   const singleUserAnnualCost = APP_GIB_SCANNED_PER_SESSION * APP_SESSIONS_PER_DAY * 365 * perGibScanPrice;
   const teamAnnualCost       = singleUserAnnualCost * 10;
 
@@ -322,6 +324,9 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ timeRange }) =
             <Flex justifyContent="space-between" alignItems="baseline" gap={8}>
               <Text textStyle="base-emphasized" style={{ color: Colors.Text.Neutral.Default }}>
                 {rateCard.isLoading ? "…" : money(singleUserAnnualCost)}
+                <span style={{ color: Colors.Text.Neutral.Subdued, fontWeight: 400, marginLeft: 4 }}>
+                  {t("billing.appCostPerYear")}
+                </span>
               </Text>
               <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued }}>
                 {t("billing.appCostSingle")}
@@ -330,6 +335,9 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ timeRange }) =
             <Flex justifyContent="space-between" alignItems="baseline" gap={8}>
               <Text textStyle="base-emphasized" style={{ color: Colors.Text.Neutral.Default }}>
                 {rateCard.isLoading ? "…" : money(teamAnnualCost)}
+                <span style={{ color: Colors.Text.Neutral.Subdued, fontWeight: 400, marginLeft: 4 }}>
+                  {t("billing.appCostPerYear")}
+                </span>
               </Text>
               <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued }}>
                 {t("billing.appCostTeam")}
