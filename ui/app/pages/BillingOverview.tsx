@@ -172,7 +172,21 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ timeRange }) =
       <Surface
         elevation="flat"
         color={rateCard.source === "account" ? "success" : "warning"}
-        style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}
+        style={{
+          padding: "16px 20px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          // Force the tint explicitly — Surface's `color` prop alone renders
+          // a subtle tint that reads as neutral on this Strato build. Setting
+          // the border + a light background makes the state unmistakable.
+          background: rateCard.source === "account"
+            ? Colors.Background.Field.Success.Default
+            : Colors.Background.Field.Warning.Default,
+          border: `1px solid ${rateCard.source === "account"
+            ? Colors.Border.Success.Default
+            : Colors.Border.Warning.Default}`,
+        }}
       >
         <Flex justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={8}>
           <Heading level={5} style={{ margin: 0 }}>
