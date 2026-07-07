@@ -694,33 +694,59 @@ fetch dt.system.events, from:${tr.dqlFrom}, to:${tr.dqlTo}
 }
 `.trim();
 
-/** Billing detail by event.type — for breakdown tables and cost calculation */
-// Each capability exposes its billed quantity under a different field:
-//   billed_bytes                 → logs/events/DEM/traces query (retain & query)
-//   ingested_bytes               → Traces - Ingest & Process
-//   billed_gibibyte_hours        → Full-Stack Monitoring
-//   billed_host_hours            → Infrastructure Monitoring
-//   data_points                  → Metrics - Ingest & Process
-//   billed_synthetic_action_count→ Browser Monitor or Clickpath
-//   billed_invocations           → AppEngine Functions
-//   billed_sessions              → Real User Monitoring
+/** Billing detail by event.type — for breakdown tables and cost calculation.
+ *
+ * Retain gotcha: when a tenant retains multiple buckets, BILLING_USAGE_EVENT
+ * fires one row PER BUCKET at each snapshot moment (up to a few rows at the
+ * same timestamp). A naive `avg(billed_bytes)` divides the total by the raw
+ * event count and undercounts by the bucket multiplier (a 2-bucket tenant
+ * halves the Retain figure).
+ *
+ * Fix: collapse events sharing a snapshot moment via `bin(timestamp, 1m)`
+ * before the outer aggregate. `avg_gib` is then avg-per-snapshot-moment
+ * (sum-of-bucket-bytes averaged across moments) which is what the Retain
+ * cost math needs (`avg × days`). Sums (data_gib, gib_hours, host_hours,
+ * data_points, etc.) are unaffected — a sum of sums is still the total.
+ *
+ * Each capability exposes its billed quantity under a different field:
+ *   billed_bytes                 → logs/events/DEM/traces query (retain & query)
+ *   ingested_bytes               → Traces - Ingest & Process
+ *   billed_gibibyte_hours        → Full-Stack Monitoring
+ *   billed_host_hours            → Infrastructure Monitoring
+ *   data_points                  → Metrics - Ingest & Process
+ *   billed_synthetic_action_count→ Browser Monitor or Clickpath
+ *   billed_invocations           → AppEngine Functions
+ *   billed_sessions              → Real User Monitoring
+ */
 export const billingDetailByTypeQuery = (tr: TimeRangeOption) => `
 fetch dt.system.events, from:${tr.dqlFrom}, to:${tr.dqlTo}
 | filter event.kind == "BILLING_USAGE_EVENT"
+| fieldsAdd bytes = coalesce(billed_bytes, 0.0) + coalesce(ingested_bytes, 0.0)
 | summarize {
-  data_gib          = sum((coalesce(billed_bytes, 0.0) + coalesce(ingested_bytes, 0.0)) / 1073741824.0),
-  avg_gib           = avg((coalesce(billed_bytes, 0.0) + coalesce(ingested_bytes, 0.0)) / 1073741824.0),
-  gib_hours         = sum(coalesce(billed_gibibyte_hours, 0.0)),
-  pod_hours         = sum(coalesce(billed_pod_hours, 0.0)),
-  host_hours        = sum(coalesce(billed_host_hours, 0.0)),
-  host_unit_hours   = sum(coalesce(billed_gibibyte_hours, 0.0)) / 16.0,
-  data_points       = sum(coalesce(data_points, 0)),
-  synthetic_actions = sum(coalesce(billed_synthetic_action_count, 0)),
-  http_requests     = sum(coalesce(billed_http_request_count, 0)),
-  invocations       = sum(coalesce(billed_invocations, 0)),
-  sessions          = sum(coalesce(billed_sessions, 0)),
+  bytes_pm  = sum(bytes),
+  gib_hours_pm  = sum(coalesce(billed_gibibyte_hours, 0.0)),
+  pod_hours_pm  = sum(coalesce(billed_pod_hours, 0.0)),
+  host_hours_pm = sum(coalesce(billed_host_hours, 0.0)),
+  data_points_pm    = sum(coalesce(data_points, 0)),
+  synth_actions_pm  = sum(coalesce(billed_synthetic_action_count, 0)),
+  http_requests_pm  = sum(coalesce(billed_http_request_count, 0)),
+  invocations_pm    = sum(coalesce(billed_invocations, 0)),
+  sessions_pm       = sum(coalesce(billed_sessions, 0))
+}, by: { event_type = event.type, moment = bin(timestamp, 1m) }
+| summarize {
+  data_gib          = sum(bytes_pm) / 1073741824.0,
+  avg_gib           = avg(bytes_pm) / 1073741824.0,
+  gib_hours         = sum(gib_hours_pm),
+  pod_hours         = sum(pod_hours_pm),
+  host_hours        = sum(host_hours_pm),
+  host_unit_hours   = sum(gib_hours_pm) / 16.0,
+  data_points       = sum(data_points_pm),
+  synthetic_actions = sum(synth_actions_pm),
+  http_requests     = sum(http_requests_pm),
+  invocations       = sum(invocations_pm),
+  sessions          = sum(sessions_pm),
   event_count       = count()
-}, by: { event_type = event.type }
+}, by: { event_type }
 | sort data_gib desc
 `.trim();
 
