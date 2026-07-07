@@ -188,8 +188,8 @@ export const STRINGS = {
   },
   "kpi.nodeLicenseCost.title": { en: "Node License Cost", pt: "Custo de Licença dos Nodes" },
   "kpi.nodeLicenseCost.body": {
-    en: "Full-Stack license cost of the cluster nodes (K8s nodes are billed as Full-Stack hosts).",
-    pt: "Custo de licença Full-Stack dos nodes do cluster (nodes K8s são cobrados como hosts Full-Stack).",
+    en: "This is the Full-Stack Monitoring SKU applied to the EC2/VM hosts that back Kubernetes cluster nodes — cost = billed_gibibyte_hours × Full-Stack rate. It is a SEPARATE line from the Kubernetes Platform Monitoring SKU shown on the Billing tab (that one prices pod-hours × K8s Platform rate, a few reais/dollars). Both appear on the Dynatrace invoice and are additive; there is no double-billing — one covers the node's host license, the other the K8s data-plane data collection.",
+    pt: "Este é o SKU Full-Stack Monitoring aplicado aos hosts EC2/VM que sustentam os nodes do cluster Kubernetes — custo = billed_gibibyte_hours × rate Full-Stack. É uma linha SEPARADA do SKU Kubernetes Platform Monitoring mostrado na aba Billing (aquele precifica pod-hours × rate K8s Platform, poucos reais/dólares). Os dois aparecem na fatura do Dynatrace e se somam; não há dupla cobrança — um cobre a licença do host node, o outro a coleta de dados do data-plane K8s.",
   },
   // Cloud tab — page subtitle
   "cloud.subtitle": {
