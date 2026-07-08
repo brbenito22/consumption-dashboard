@@ -20,10 +20,11 @@ import { TIME_RANGE_OPTIONS, type TimeRangeOption } from "../types";
 // ── Cost Center app self-cost estimate constants ────────────────────────────
 // Rough GiB scanned per full user session across all tabs the app renders
 // (Overview + Applications + Observability + Billing + Predictions + Cloud +
-// Infrastructure). Anchored on the fact that the heavy queries are the raw
-// `fetch logs` / `fetch spans` calls, which dominate the scan budget. This is
-// intentionally rough — the point is to show an order of magnitude.
-const APP_GIB_SCANNED_PER_SESSION = 30;
+// Infrastructure). As of v1.51.0 the app migrated logs/events count queries
+// to BILLING_USAGE_EVENT (~0 GB) and narrowed top-offender windows 24h→6h.
+// The remaining scan is dominated by the 4 fetch-spans top-offender queries.
+// Anchored to ~5 GiB per full session (95% cut vs pre-optimization 30 GiB).
+const APP_GIB_SCANNED_PER_SESSION = 5;
 const APP_SESSIONS_PER_DAY        = 1;   // "daily user" scenario
 
 interface BillingOverviewProps { timeRange: TimeRangeOption; }

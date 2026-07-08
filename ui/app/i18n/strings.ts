@@ -267,8 +267,8 @@ export const STRINGS = {
     pt: "Cost Center — custo anual do app",
   },
   "billing.appCostNote": {
-    en: "Rough estimate: ~30 GiB scanned per full user session (Overview + Observability + Billing + Predictions), priced with Log Management & Analytics – Query. Real cost varies with tenant data volume and usage frequency.",
-    pt: "Estimativa aproximada: ~30 GiB escaneados por sessão completa (Overview + Observability + Billing + Predictions), precificados com Log Management & Analytics – Query. O custo real varia com o volume de dados do tenant e a frequência de uso.",
+    en: "Rough estimate: ~5 GiB scanned per full user session (after v1.51.0 — logs/events counts moved to BILLING_USAGE_EVENT, top-offender window narrowed to 6h, session cache 10 min), priced with Log Management & Analytics – Query. Real cost varies with tenant data volume and usage frequency.",
+    pt: "Estimativa aproximada: ~5 GiB escaneados por sessão completa (após v1.51.0 — contagens de logs/events migradas para BILLING_USAGE_EVENT, janela de top-offenders reduzida para 6h, session cache de 10 min), precificados com Log Management & Analytics – Query. O custo real varia com o volume de dados do tenant e a frequência de uso.",
   },
   "billing.appCostSingle": { en: "single user, daily use",       pt: "um usuário, uso diário"    },
   "billing.appCostTeam":   { en: "team of 10 users, daily use",   pt: "time de 10 usuários, uso diário" },
