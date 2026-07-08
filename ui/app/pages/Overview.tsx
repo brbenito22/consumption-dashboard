@@ -159,10 +159,10 @@ export const Overview: React.FC<OverviewProps> = ({ timeRange }) => {
     : "—";
 
   const metrics = [
-    { label: "Log Records",     current: totalLogs,   prev: prevLogs,   loading: logsQ.isLoading   || logsPrevQ.isLoading,   color: chartColor(0) },
-    { label: "Trace Spans",     current: totalSpans,  prev: prevSpans,  loading: spansQ.isLoading  || spansPrevQ.isLoading,  color: chartColor(2) },
-    { label: "Events",          current: totalEvents, prev: prevEvents, loading: eventsQ.isLoading || eventsPrevQ.isLoading, color: chartColor(3) },
-    { label: "Business Events", current: totalBiz,    prev: prevBiz,    loading: bizQ.isLoading    || bizPrevQ.isLoading,    color: chartColor(5) },
+    { label: "Log Ingest (GiB)",   current: totalLogs,   prev: prevLogs,   loading: logsQ.isLoading   || logsPrevQ.isLoading,   color: chartColor(0) },
+    { label: "Trace Spans",        current: totalSpans,  prev: prevSpans,  loading: spansQ.isLoading  || spansPrevQ.isLoading,  color: chartColor(2) },
+    { label: "Event Ingest (GiB)", current: totalEvents, prev: prevEvents, loading: eventsQ.isLoading || eventsPrevQ.isLoading, color: chartColor(3) },
+    { label: "Business Events",    current: totalBiz,    prev: prevBiz,    loading: bizQ.isLoading    || bizPrevQ.isLoading,    color: chartColor(5) },
   ];
 
   // Cloud aggregation — all client-side from queries that other tabs also run.
@@ -205,9 +205,9 @@ export const Overview: React.FC<OverviewProps> = ({ timeRange }) => {
         <Heading level={3}>Ingestion Rate</Heading>
         <Flex gap={12} flexWrap="wrap">
           <KpiCard
-            label="Log Records / Hour"
-            value={logsQ.isLoading ? "…" : formatRatePerHour(logsPerH, "")}
-            subLabel={logsQ.isLoading ? "loading…" : `${formatCount(totalLogs)} total records`}
+            label="Log Ingest / Hour"
+            value={logsQ.isLoading ? "…" : formatRatePerHour(logsPerH, "GiB")}
+            subLabel={logsQ.isLoading ? "loading…" : `${formatCount(totalLogs)} GiB total (billed)`}
             isLoading={logsQ.isLoading}
             error={logsQ.error}
             icon={consumptionIcon}
@@ -224,9 +224,9 @@ export const Overview: React.FC<OverviewProps> = ({ timeRange }) => {
             info={kpiInfo(t, "spansPerHour")}
           />
           <KpiCard
-            label="Events / Hour"
-            value={eventsQ.isLoading ? "…" : formatRatePerHour(eventsPerH, "")}
-            subLabel={eventsQ.isLoading ? "loading…" : `${formatCount(totalEvents)} total events`}
+            label="Event Ingest / Hour"
+            value={eventsQ.isLoading ? "…" : formatRatePerHour(eventsPerH, "GiB")}
+            subLabel={eventsQ.isLoading ? "loading…" : `${formatCount(totalEvents)} GiB total (billed)`}
             isLoading={eventsQ.isLoading}
             error={eventsQ.error}
             colorVariant="warning"

@@ -8,9 +8,14 @@ import type { TimeRangeOption } from "./types";
 
 // ── OBSERVABILITY ─────────────────────────────────────────────────────────────
 
+// COST-OPTIMIZED: log volume comes from BILLING_USAGE_EVENT (billed_bytes),
+// which scans dt.system.events (~0 GB) instead of the raw log stream.
+// `count` field is the log ingestion VOLUME in GiB per bin (semantic shift
+// from record count — Overview labels updated to "Log Ingest (GiB) / hour").
 export const logsCountQuery = (tr: TimeRangeOption) => `
-fetch logs, from:${tr.dqlFrom}, to:${tr.dqlTo}
-| summarize count = count(), by: { interval = bin(timestamp, ${tr.binInterval}) }
+fetch dt.system.events, from:${tr.dqlFrom}, to:${tr.dqlTo}
+| filter event.kind == "BILLING_USAGE_EVENT" and event.type == "Log Management & Analytics - Ingest & Process"
+| summarize count = sum(coalesce(billed_bytes, 0.0)) / 1073741824.0, by: { interval = bin(timestamp, ${tr.binInterval}) }
 | sort interval asc
 `.trim();
 
@@ -23,18 +28,25 @@ fetch dt.system.events, from:${tr.dqlFrom}, to:${tr.dqlTo}
 | sort interval asc
 `.trim();
 
-/** Total span count over the window. */
+// COST-OPTIMIZED: total span count from dt.system.events (ingested_spans),
+// matching the pattern in spansCountQuery. Scans ~0 GB.
 export const spansTotalQuery = (tr: TimeRangeOption) => `
-fetch spans, from:${tr.dqlFrom}, to:${tr.dqlTo}
-| summarize total = count()
+fetch dt.system.events, from:${tr.dqlFrom}, to:${tr.dqlTo}
+| filter event.kind == "BILLING_USAGE_EVENT" and event.type == "Traces - Ingest & Process"
+| summarize total = sum(coalesce(ingested_spans, 0))
 `.trim();
 
+// COST-OPTIMIZED: event volume from BILLING_USAGE_EVENT (billed_bytes).
+// Semantic shift from record count to GiB — Overview labels updated.
 export const eventsCountQuery = (tr: TimeRangeOption) => `
-fetch events, from:${tr.dqlFrom}, to:${tr.dqlTo}
-| summarize count = count(), by: { interval = bin(timestamp, ${tr.binInterval}) }
+fetch dt.system.events, from:${tr.dqlFrom}, to:${tr.dqlTo}
+| filter event.kind == "BILLING_USAGE_EVENT" and event.type == "Events - Ingest & Process"
+| summarize count = sum(coalesce(billed_bytes, 0.0)) / 1073741824.0, by: { interval = bin(timestamp, ${tr.binInterval}) }
 | sort interval asc
 `.trim();
 
+// bizevents is typically small — keep raw fetch but the aggressive session
+// cache (see useDql.ts, 600s TTL) keeps re-render impact low.
 export const bizeventsCountQuery = (tr: TimeRangeOption) => `
 fetch bizevents, from:${tr.dqlFrom}, to:${tr.dqlTo}
 | summarize count = count(), by: { interval = bin(timestamp, ${tr.binInterval}) }
@@ -44,19 +56,20 @@ fetch bizevents, from:${tr.dqlFrom}, to:${tr.dqlTo}
 // ── TOP CONTRIBUTORS (biggest ingestion offenders) ───────────────────────────
 
 // Offender breakdowns require fetch logs/spans (no metric for group-by-name),
-// so they use a fixed 24h window to keep the Grail scan small (≈7× cheaper
-// than a 7-day scan). The trailing `_tr` keeps a uniform signature.
-/** Top log sources by record count (last 24h). */
+// so they use a fixed SHORT window (6h) to keep the Grail scan small — the
+// share ranking is stable enough at 6h and the scan is ~4× cheaper than 24h.
+// The trailing `_tr` keeps a uniform signature.
+/** Top log sources by record count (last 6h). */
 export const topLogSourcesQuery = (_tr: TimeRangeOption) => `
-fetch logs, from:now()-24h, to:now()
+fetch logs, from:now()-6h, to:now()
 | summarize value = count(), by: { name = log.source }
 | sort value desc
 | limit 8
 `.trim();
 
-/** Top span operations by span count (last 24h). */
+/** Top span operations by span count (last 6h). */
 export const topSpanOpsQuery = (_tr: TimeRangeOption) => `
-fetch spans, from:now()-24h, to:now()
+fetch spans, from:now()-6h, to:now()
 | summarize value = count(), by: { name = span.name }
 | sort value desc
 | limit 8
@@ -78,18 +91,18 @@ fetch bizevents, from:${tr.dqlFrom}, to:${tr.dqlTo}
 | limit 8
 `.trim();
 
-/** Top service endpoints by request/span count (last 24h). */
+/** Top service endpoints by request/span count (last 6h). */
 export const topEndpointsQuery = (_tr: TimeRangeOption) => `
-fetch spans, from:now()-24h, to:now()
+fetch spans, from:now()-6h, to:now()
 | filter isNotNull(endpoint.name)
 | summarize value = count(), by: { name = endpoint.name }
 | sort value desc
 | limit 8
 `.trim();
 
-/** Top span operations by count (application perspective, last 24h). */
+/** Top span operations by count (application perspective, last 6h). */
 export const topAppOpsQuery = (_tr: TimeRangeOption) => `
-fetch spans, from:now()-24h, to:now()
+fetch spans, from:now()-6h, to:now()
 | summarize value = count(), by: { name = span.name }
 | sort value desc
 | limit 8
@@ -654,19 +667,24 @@ fetch dt.system.events, from: ${tr.dqlFrom}, to: ${tr.dqlTo}
 
 // ── OVERVIEW TOTALS — current week ────────────────────────────────────────────
 
+// COST-OPTIMIZED: today totals from BILLING_USAGE_EVENT (~0 GB scan).
+// Semantics for logs/events shifted to GiB (billed volume), spans stays as count.
 export const totalLogsTodayQuery = () => `
-fetch logs, from:now()-24h, to:now()
-| summarize total = count()
+fetch dt.system.events, from:now()-24h, to:now()
+| filter event.kind == "BILLING_USAGE_EVENT" and event.type == "Log Management & Analytics - Ingest & Process"
+| summarize total = sum(coalesce(billed_bytes, 0.0)) / 1073741824.0
 `.trim();
 
 export const totalSpansTodayQuery = () => `
-fetch spans, from:now()-24h, to:now()
-| summarize total = count()
+fetch dt.system.events, from:now()-24h, to:now()
+| filter event.kind == "BILLING_USAGE_EVENT" and event.type == "Traces - Ingest & Process"
+| summarize total = sum(coalesce(ingested_spans, 0))
 `.trim();
 
 export const totalEventsTodayQuery = () => `
-fetch events, from:now()-24h, to:now()
-| summarize total = count()
+fetch dt.system.events, from:now()-24h, to:now()
+| filter event.kind == "BILLING_USAGE_EVENT" and event.type == "Events - Ingest & Process"
+| summarize total = sum(coalesce(billed_bytes, 0.0)) / 1073741824.0
 `.trim();
 
 export const totalHostsQuery = () => `
@@ -841,9 +859,12 @@ export const fullStackGibHoursQuery = (tr: TimeRangeOption) => capabilityHourlyQ
 
 // ── PREVIOUS WEEK TOTALS (now()-14d → now()-7d) ───────────────────────────────
 
+// COST-OPTIMIZED: prev-week log volume via BILLING_USAGE_EVENT.
+// Returns GiB (billed_bytes / 1073741824) — semantic shift from record count.
 export const logsCountPrevWeekQuery = () => `
-fetch logs, from:now()-14d, to:now()-7d
-| summarize total = count()
+fetch dt.system.events, from:now()-14d, to:now()-7d
+| filter event.kind == "BILLING_USAGE_EVENT" and event.type == "Log Management & Analytics - Ingest & Process"
+| summarize total = sum(coalesce(billed_bytes, 0.0)) / 1073741824.0
 `.trim();
 
 // COST-OPTIMIZED: previous-week span total from dt.system.events (~0 GB scan).
@@ -853,9 +874,11 @@ fetch dt.system.events, from:now()-14d, to:now()-7d
 | summarize total = sum(coalesce(ingested_spans, 0))
 `.trim();
 
+// COST-OPTIMIZED: prev-week event volume via BILLING_USAGE_EVENT (GiB).
 export const eventsCountPrevWeekQuery = () => `
-fetch events, from:now()-14d, to:now()-7d
-| summarize total = count()
+fetch dt.system.events, from:now()-14d, to:now()-7d
+| filter event.kind == "BILLING_USAGE_EVENT" and event.type == "Events - Ingest & Process"
+| summarize total = sum(coalesce(billed_bytes, 0.0)) / 1073741824.0
 `.trim();
 
 export const bizeventsCountPrevWeekQuery = () => `

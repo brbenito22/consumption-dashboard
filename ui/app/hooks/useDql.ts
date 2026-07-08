@@ -13,7 +13,13 @@ interface DqlResult<T = Record<string, unknown>> {
  * repeated Grail scans. Promises are cached so concurrent identical requests
  * share a single execution.
  */
-const CACHE_TTL_MS = 120_000;
+// 10 min TTL — repeat scans of the heavy `fetch spans / logs / bizevents`
+// queries (`topLogSourcesQuery`, `topEndpointsQuery`, offender breakdowns,
+// bizevents totals) are the app's dominant Grail cost. A longer session
+// cache dramatically cuts repeat scans during typical browsing without
+// giving up freshness — billing usage events themselves are also indexed
+// dt.system.events data, so re-run within the TTL is a pure cache hit.
+const CACHE_TTL_MS = 600_000;
 const queryCache = new Map<string, { ts: number; promise: Promise<unknown[]> }>();
 
 function runQuery(query: string): Promise<unknown[]> {
