@@ -2,7 +2,7 @@
   "$schema": "https://developer.dynatrace.com/docs-assets/schema_strict_apps.json",
   "dynatrace": "1",
   "schemaId": "rate-card-settings",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "summaryPattern": "{rate_card_type}",
   "displayName": "Cost Center — Rate Card",
   "description": "Configure how Cost Center obtains capability prices. Use your Account Rate Card (via OAuth client credentials) or the Dynatrace default rate card.",
@@ -69,6 +69,12 @@
       "type": "text",
       "nullable": true,
       "description": "Optional. Used to read Dynatrace's authoritative total cost from the Platform Subscription API. Leave empty to auto-discover the first subscription. Find it via GET /sub/v2/accounts/{account}/subscriptions."
+    },
+    "annual_commitment": {
+      "displayName": "Annual commitment (optional)",
+      "type": "float",
+      "nullable": true,
+      "description": "Optional. Annual commitment amount (in your billing currency) shown in Account Management → Budget summary. Only needed if the Subscription API does not expose the budget automatically — powers the Budget strip on the Billing tab."
     }
   },
   "constraints": [

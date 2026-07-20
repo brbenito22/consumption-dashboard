@@ -7,12 +7,15 @@ import { KpiCard } from "../components/KpiCard";
 import { TopContributors, type ContributorRow } from "../components/TopContributors";
 import { useDql, formatCount } from "../hooks/useDql";
 import { useRateCard } from "../hooks/useRateCard";
+import { useCostCalibration } from "../hooks/useCostCalibration";
 import { useCurrency } from "../context/CurrencyContext";
 import { useLang } from "../context/LanguageContext";
 import { kpiInfo } from "../i18n/kpiInfo";
 import { normalizeCapabilityName } from "../constants/rateCard";
 import { chartColor } from "../constants/palette";
 import { PageHeader } from "../components/PageHeader";
+import { CapabilityCostPanel } from "../components/CapabilityCostPanel";
+import { tabIncludes } from "../constants/capabilityInfo";
 import {
   fullStackHostCountQuery,
   infraHostCountQuery,
@@ -204,6 +207,7 @@ export const Infrastructure: React.FC<InfrastructureProps> = ({ timeRange }) => 
   // Per-host license consumption (Full-Stack gibibyte-hours / Infra host-hours)
   const licenseQ = useDql(useMemo(() => hostLicenseQuery(timeRange), [timeRange]));
   const rateCard = useRateCard();
+  const calibration = useCostCalibration();
   const { money: fmtUSD } = useCurrency();
   const { t } = useLang();
 
@@ -236,9 +240,11 @@ export const Infrastructure: React.FC<InfrastructureProps> = ({ timeRange }) => 
     return m;
   }, [memQ.data]);
 
-  // License consumption + estimated cost per host id
-  const fsRate    = rateCard.ratesByName.get(normalizeCapabilityName("Full-Stack Monitoring"))?.price ?? 0;
-  const infraRate = rateCard.ratesByName.get(normalizeCapabilityName("Infrastructure Monitoring"))?.price ?? 0;
+  // License consumption + estimated cost per host id — rates calibrated to the
+  // official Subscription-API basis so host/hostgroup/node tables sum to the
+  // same capability totals the Billing tab (and Account Management) show.
+  const fsRate    = (rateCard.ratesByName.get(normalizeCapabilityName("Full-Stack Monitoring"))?.price ?? 0) * calibration.factorFor("Full-Stack Monitoring");
+  const infraRate = (rateCard.ratesByName.get(normalizeCapabilityName("Infrastructure Monitoring"))?.price ?? 0) * calibration.factorFor("Infrastructure Monitoring");
   const licenseByHost = useMemo(() => {
     const m = new Map<string, { gibH: number; hostH: number; cost: number }>();
     ((licenseQ.data ?? []) as Record<string, unknown>[]).forEach(r => {
@@ -556,6 +562,9 @@ export const Infrastructure: React.FC<InfrastructureProps> = ({ timeRange }) => 
         )}
       </Flex>
 
+      <Divider />
+      {/* Cost attribution for host/K8s capabilities (Full-Stack, Infra, K8s…). */}
+      <CapabilityCostPanel include={tabIncludes("infrastructure")} />
     </Flex>
   );
 };

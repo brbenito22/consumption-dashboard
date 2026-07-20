@@ -27,6 +27,8 @@ import {
   topBizTypesQuery,
 } from "../queries";
 import { chartColor } from "../constants/palette";
+import { CapabilityCostPanel } from "../components/CapabilityCostPanel";
+import { tabIncludes } from "../constants/capabilityInfo";
 import { useCapabilityCosts } from "../hooks/useCapabilityCosts";
 import { useCurrency } from "../context/CurrencyContext";
 import { useLang } from "../context/LanguageContext";
@@ -142,6 +144,10 @@ export const Observability: React.FC<ObservabilityProps> = ({ timeRange }) => {
         <ConsumptionChart title="Business Events" series={bizSeries} unit="bizevents" isLoading={bizQ.isLoading} error={bizQ.error} color={chartColor(7)} />
         <TopContributors title="Top Business Event Types" unit="events" color={chartColor(7)} rows={toRows(topBizQ.data)} isLoading={topBizQ.isLoading} error={topBizQ.error} />
       </Grid>
+
+      <Divider />
+      {/* Cost attribution for the data types this tab shows (logs/traces/events). */}
+      <CapabilityCostPanel include={tabIncludes("observability")} />
     </Flex>
   );
 };

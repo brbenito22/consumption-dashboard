@@ -21,6 +21,115 @@ export const STRINGS = {
     pt: 'O "Dynatrace Official Cost" é o valor autoritativo que o próprio Dynatrace fatura pela subscription (vindo da Platform Subscription API), cobrindo o período de faturamento dele — por isso NÃO é comparável ao "Cost (last {window})", que é apenas a janela selecionada. Os valores por capability e por ofensor vêm do consumo no Grail × rate card, dando a atribuição granular que a API de faturamento não expõe; validamos essas quantidades contra o metering do Dynatrace.',
   },
 
+  // ── Budget strip (mirrors Account Management's Budget summary) ────────────
+  "budget.title": { en: "Budget summary", pt: "Resumo do budget" },
+  "budget.commitment": { en: "Annual commitment", pt: "Commitment anual" },
+  "budget.used": { en: "Used (official cost)", pt: "Usado (custo oficial)" },
+  "budget.daysLeft": { en: "Days remaining", pt: "Dias restantes" },
+  "budget.reachedOn": { en: "Commitment reached ≈ {date}", pt: "Commitment atingido ≈ {date}" },
+  "budget.notReached": { en: "commitment not reached yet", pt: "commitment ainda não atingido" },
+  "budget.overText": {
+    en: "The annual commitment has been exceeded — additional usage is billed on-demand at rate-card prices (no surcharge).",
+    pt: "O commitment anual foi ultrapassado — o uso adicional é cobrado on-demand pelos preços do rate card (sem surcharge).",
+  },
+  "budget.sourceSettings": {
+    en: "Commitment entered manually in Configure rate card.",
+    pt: "Commitment informado manualmente no Configure rate card.",
+  },
+  "budget.periodLabel": { en: "commitment period", pt: "período do commitment" },
+
+  // ── Reconciliation vs official cost ────────────────────────────────────────
+  "billing.recon": {
+    en: "The ≈ {pct} gap vs the Official Cost is expected: Grail query discounts (skipped bytes are ~98% discounted) and contract allowances are not modeled in the estimate — the estimate is intentionally conservative.",
+    pt: "A diferença de ≈ {pct} vs o Official Cost é esperada: descontos de query do Grail (bytes ignorados têm ~98% de desconto) e allowances do contrato não são modelados na estimativa — a estimativa é propositalmente conservadora.",
+  },
+  "billing.vsOfficial": { en: "vs Official", pt: "vs Official" },
+  "billing.officialCaps": {
+    en: "Per-capability values are read DIRECTLY from the Subscription API — the same source as Account Management, so they match it exactly. Trends, quantities and drill-downs remain Grail-based estimates for attribution.",
+    pt: "Os valores por capability são lidos DIRETO da Subscription API — a mesma fonte do Account Management, então batem exatamente. Tendências, quantidades e drill-downs continuam sendo estimativas via Grail para atribuição.",
+  },
+
+  // ── 30d comparison + view controls ─────────────────────────────────────────
+  "billing.delta30": { en: "last 30d vs previous 30d", pt: "últimos 30d vs 30d anteriores" },
+  "billing.last30": { en: "Last 30d", pt: "Últimos 30d" },
+  "delta.new": { en: "new", pt: "novo" },
+  "billing.view.cards": { en: "Cards", pt: "Cards" },
+  "billing.view.table": { en: "Table", pt: "Tabela" },
+  "billing.exportCsv": { en: "Download CSV", pt: "Baixar CSV" },
+
+  // ── Fixed billing window (aligned with Account Management) ────────────────
+  "billing.periodAligned": {
+    en: "Fixed window aligned with Account Management: {from} → today (billing period to date). The timeframe selector does not apply to this tab — one window, zero divergence from the official Cost & Usage view.",
+    pt: "Janela fixa alinhada ao Account Management: {from} → hoje (período de faturamento até agora). O seletor de tempo não se aplica a esta aba — uma janela só, zero divergência da visão oficial de Cost & Usage.",
+  },
+  "billing.periodFallback": {
+    en: "Fixed window: last 30 days — Account Management's default view. Configure the account rate card to anchor this tab to your exact billing period.",
+    pt: "Janela fixa: últimos 30 dias — a visão padrão do Account Management. Configure o rate card da conta para ancorar esta aba no seu período de faturamento exato.",
+  },
+
+  // ── Cost over time + period comparison (Billing tab) ──────────────────────
+  "billing.trend.title": { en: "Cost over time", pt: "Custo ao longo do tempo" },
+  "billing.trend.subtitle": {
+    en: "Total estimated cost per {bin} across all priced capabilities. Click any capability card below for its own trend and period comparison.",
+    pt: "Custo total estimado por {bin} somando todas as capabilities precificadas. Clique em qualquer card de capability abaixo para ver a tendência e a comparação de período dela.",
+  },
+  "billing.trend.vsPrev": { en: "vs previous {window}", pt: "vs {window} anteriores" },
+  "billing.trend.deltaSub": {
+    en: "previous period: {prev}",
+    pt: "período anterior: {prev}",
+  },
+  "billing.trend.noPrev": { en: "no data in previous period", pt: "sem dados no período anterior" },
+  "billing.why.title": {
+    en: "Reduced ingest but cost didn't drop?",
+    pt: "Reduziu o ingest mas o custo não caiu?",
+  },
+  "billing.why.p1": {
+    en: "Ingest is only one of several billed quantities. Host capabilities (Full-Stack, Infrastructure) bill by GiB-hours / host-hours — they don't change when you cut trace or log volume. Retain bills the volume already stored (GiB-days), so it reacts slowly, only as old data ages out of retention.",
+    pt: "Ingest é só uma das quantidades cobradas. Capabilities de host (Full-Stack, Infrastructure) cobram por GiB-hora / host-hora — elas não mudam quando você corta volume de trace ou log. Retain cobra o volume já armazenado (GiB-dias), então reage devagar, apenas conforme o dado antigo expira da retenção.",
+  },
+  "billing.why.p2": {
+    en: "Use the per-capability trend (click a card) to see WHERE cost actually moved: an ingest cut shows in \"… - Ingest & Process\" within hours, while host and retain lines stay flat. If the total didn't move, the savings were real but small relative to host-based cost.",
+    pt: "Use a tendência por capability (clique num card) para ver ONDE o custo realmente se moveu: um corte de ingest aparece em \"… - Ingest & Process\" em horas, enquanto as linhas de host e retain ficam estáveis. Se o total não se moveu, a economia foi real, mas pequena em relação ao custo de host.",
+  },
+  "billing.cards.hint": {
+    en: "Click a capability for its cost trend and period comparison.",
+    pt: "Clique em uma capability para ver a tendência de custo e a comparação de período.",
+  },
+
+  // ── Per-tab capability cost panel ──────────────────────────────────────────
+  "costpanel.title": { en: "Where the money goes", pt: "Para onde vai o dinheiro" },
+  "costpanel.subtitle": {
+    en: "Estimated cost per capability in the selected window, with the change vs the previous equal period. Click a card for the trend, interval-by-interval comparison and what drives that cost.",
+    pt: "Custo estimado por capability na janela selecionada, com a variação vs o período anterior de mesmo tamanho. Clique em um card para ver a tendência, a comparação intervalo a intervalo e o que puxa esse custo.",
+  },
+  "costpanel.groupTotal": { en: "Total (this view)", pt: "Total (desta visão)" },
+  "costpanel.windowAligned": {
+    en: "Window: billing period ({from} → today), same basis as Account Management — the timeframe selector does not affect cost figures.",
+    pt: "Janela: período de faturamento ({from} → hoje), mesma base do Account Management — o seletor de tempo não afeta os valores de custo.",
+  },
+  "costpanel.windowFallback": {
+    en: "Window: last 30 days, same basis as Account Management's default view — the timeframe selector does not affect cost figures.",
+    pt: "Janela: últimos 30 dias, mesma base da visão padrão do Account Management — o seletor de tempo não afeta os valores de custo.",
+  },
+  "costpanel.ofGroup": { en: "of this view", pt: "desta visão" },
+
+  // ── Capability detail sheet ────────────────────────────────────────────────
+  "capsheet.close": { en: "Close", pt: "Fechar" },
+  "capsheet.costWindow": { en: "Cost (selected window)", pt: "Custo (janela selecionada)" },
+  "capsheet.quantity": { en: "Billed quantity", pt: "Quantidade cobrada" },
+  "capsheet.price": { en: "Rate card price", pt: "Preço do rate card" },
+  "capsheet.costOverTime": { en: "Cost over time", pt: "Custo ao longo do tempo" },
+  "capsheet.qtyOverTime": { en: "Billed quantity over time", pt: "Quantidade cobrada ao longo do tempo" },
+  "capsheet.binTable": { en: "Per-interval comparison", pt: "Comparação por intervalo" },
+  "capsheet.note": {
+    en: "Values are Grail consumption × your rate card — an estimate for attribution, not an invoice. The previous-period delta compares two windows of identical length ending now and at the start of the current window.",
+    pt: "Os valores são consumo do Grail × seu rate card — uma estimativa para atribuição, não uma fatura. O delta de período compara duas janelas de mesmo tamanho: a atual e a imediatamente anterior.",
+  },
+  "capsheet.colInterval": { en: "Interval", pt: "Intervalo" },
+  "capsheet.colCost": { en: "Cost", pt: "Custo" },
+  "capsheet.colQty": { en: "Quantity", pt: "Quantidade" },
+  "capsheet.colDelta": { en: "Δ vs previous interval", pt: "Δ vs intervalo anterior" },
+
   // ── Projection info overlay ────────────────────────────────────────────────
   "info.projection.titleMonthly": {
     en: "How the monthly projection is calculated",

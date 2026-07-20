@@ -7,11 +7,32 @@ import {
   type RateCardFunctionResponse,
   type RateCardResponse,
   type RateCardType,
+  buildOfficialByCap,
   type BillingUnit,
   type OfficialCost,
+  type OfficialBudget,
+  type OfficialCapabilityCost,
 } from "../constants/rateCard";
 
 const RATE_CARD_FUNCTION = "get-rate-card";
+
+// Module-level promise cache: useRateCard is mounted by several components at
+// once (currency sync, Billing, per-tab cost panels) and the function now fans
+// out ~20 Subscription-API calls per invocation — without this, one tab view
+// would trigger 60+ upstream requests. One invocation per app session.
+let rateCardPromise: Promise<RateCardFunctionResponse> | null = null;
+function loadRateCardOnce(): Promise<RateCardFunctionResponse> {
+  if (!rateCardPromise) {
+    rateCardPromise = functions
+      .call(RATE_CARD_FUNCTION)
+      .then((res) => res.json() as Promise<RateCardFunctionResponse>)
+      .catch((err) => {
+        rateCardPromise = null; // allow retry on next mount after a failure
+        throw err;
+      });
+  }
+  return rateCardPromise;
+}
 
 export interface CapabilityRate {
   key: string;
@@ -34,6 +55,12 @@ export interface RateCardState {
   officialCost: OfficialCost | null;
   /** Diagnostic describing why the official cost is / isn't available. */
   officialCostDiag: string | null;
+  /** Annual commitment (budget) — API-discovered or manually configured. */
+  officialBudget: OfficialBudget | null;
+  /** OFFICIAL per-capability costs (Subscription API) keyed by normalized name.
+   *  Empty map when the API doesn't expose the breakdown — callers fall back
+   *  to the Grail×rate-card estimation. */
+  officialByCap: Map<string, OfficialCapabilityCost>;
 }
 
 function buildRates(card: RateCardResponse): CapabilityRate[] {
@@ -46,6 +73,11 @@ function buildRates(card: RateCardResponse): CapabilityRate[] {
     if (lname.includes("retain")) unit = "gib_days";
     else if (lname.includes("http monitor")) unit = "requests";
     else if (lname.includes("kubernetes platform")) unit = "pod_hours";
+    // Automation Workflow bills per execution — each BILLING_USAGE_EVENT row IS
+    // one execution (validated in-tenant: 1,937 rows/30d × contract price ≈ the
+    // Account Management figure). Code Monitoring carries billed_container_hours.
+    else if (lname.includes("automation workflow")) unit = "executions";
+    else if (lname.includes("code monitoring")) unit = "container_hours";
     return {
       key: c.key,
       name: c.name,
@@ -67,14 +99,15 @@ export function useRateCard(): RateCardState {
   const [card, setCard] = useState<RateCardResponse>(defaultRateCard[0]);
   const [officialCost, setOfficialCost] = useState<OfficialCost | null>(null);
   const [officialCostDiag, setOfficialCostDiag] = useState<string | null>(null);
+  const [officialBudget, setOfficialBudget] = useState<OfficialBudget | null>(null);
+  const [officialCapCosts, setOfficialCapCosts] = useState<OfficialCapabilityCost[]>([]);
 
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       try {
-        const res = await functions.call(RATE_CARD_FUNCTION);
-        const body = (await res.json()) as RateCardFunctionResponse;
+        const body = await loadRateCardOnce();
         if (cancelled) return;
 
         const first = body.data?.[0] ?? defaultRateCard[0];
@@ -82,6 +115,8 @@ export function useRateCard(): RateCardState {
         setSource(body.source ?? "default");
         setOfficialCost(body.officialCost ?? null);
         setOfficialCostDiag(body.officialCostDiag ?? null);
+        setOfficialBudget(body.officialBudget ?? null);
+        setOfficialCapCosts(body.officialCapabilityCosts ?? []);
         if (body.error) setError(body.error);
       } catch (err) {
         if (cancelled) return;
@@ -114,6 +149,8 @@ export function useRateCard(): RateCardState {
       capabilities,
       officialCost,
       officialCostDiag,
+      officialBudget,
+      officialByCap: buildOfficialByCap(officialCapCosts),
     };
-  }, [card, isLoading, error, source, officialCost, officialCostDiag]);
+  }, [card, isLoading, error, source, officialCost, officialCostDiag, officialBudget, officialCapCosts]);
 }

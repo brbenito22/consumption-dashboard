@@ -26,6 +26,8 @@ import { useCapabilityCosts } from "../hooks/useCapabilityCosts";
 import { useCurrency } from "../context/CurrencyContext";
 import { useLang } from "../context/LanguageContext";
 import { kpiInfo } from "../i18n/kpiInfo";
+import { CapabilityCostPanel } from "../components/CapabilityCostPanel";
+import { tabIncludes } from "../constants/capabilityInfo";
 import type { TimeRangeOption } from "../types";
 
 const toRows = (data: Record<string, unknown>[] | null): ContributorRow[] =>
@@ -175,6 +177,10 @@ export const Applications: React.FC<ApplicationsProps> = ({ timeRange }) => {
         <TopContributors title="Top Endpoints (24h)" unit="cost" color={chartColor(0)} rows={toRows(topEndpointsQ.data)} isLoading={topEndpointsQ.isLoading} error={topEndpointsQ.error} sectionCost={costs.isLoading ? undefined : money(traceCost)} costForShare={shareCost(traceCost)} />
         <TopContributors title="Top Operations (24h)" unit="cost" color={chartColor(5)} rows={toRows(topOpsQ.data)} isLoading={topOpsQ.isLoading} error={topOpsQ.error} sectionCost={costs.isLoading ? undefined : money(traceCost)} costForShare={shareCost(traceCost)} />
       </Grid>
+
+      <Divider />
+      {/* Cost attribution for app-facing capabilities (RUM / synthetic / AppEngine). */}
+      <CapabilityCostPanel include={tabIncludes("applications")} />
     </Flex>
   );
 };

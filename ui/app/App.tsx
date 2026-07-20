@@ -87,9 +87,12 @@ export const App: React.FC = () => {
 
       {/* ── Main content ── */}
       <Page.Main>
-        {/* Global controls — timeframe (left) + language (right), every tab */}
+        {/* Global controls — timeframe (left) + language (right).
+            Billing has NO selector: its window is fixed to the Account
+            Management billing period so cost figures never diverge from the
+            official Cost & Usage view. Predictions is fixed-window too. */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "16px 24px 0" }}>
-          {activeKey !== "predictions"
+          {activeKey !== "predictions" && activeKey !== "billing"
             ? <TimeframeSelector value={timeRange} onChange={setTimeRange} />
             : <span />}
           <LanguageToggle />

@@ -40,6 +40,42 @@ export interface OfficialCost {
   periodTo?: string;
 }
 
+/**
+ * OFFICIAL per-capability cost parsed from the Subscription API cost rows —
+ * the same source Account Management's capability table reads. When present,
+ * the app displays these values verbatim (exact AM match by construction) and
+ * keeps Grail×rate-card estimation only for trends and drill-downs.
+ */
+export interface OfficialCapabilityCost {
+  name: string;
+  /** Total cost over the subscription's billing period to date. */
+  periodTotal: number;
+  /** Cost over the trailing 30 days (null when rows lack time granularity). */
+  last30: number | null;
+  /** Cost over the 30 days before that (null when unavailable). */
+  prev30: number | null;
+}
+
+/** Lookup map keyed by normalizeCapabilityName(name). */
+export function buildOfficialByCap(
+  list: OfficialCapabilityCost[] | undefined | null,
+): Map<string, OfficialCapabilityCost> {
+  const m = new Map<string, OfficialCapabilityCost>();
+  for (const c of list ?? []) m.set(normalizeCapabilityName(c.name), c);
+  return m;
+}
+
+/** Annual commitment (budget) of the subscription — mirrors Account Management's "Budget summary". */
+export interface OfficialBudget {
+  /** Annual commitment amount in the subscription currency. */
+  commitment: number;
+  /** Subscription (commitment) period bounds, ISO yyyy-mm-dd when known. */
+  periodStart?: string;
+  periodEnd?: string;
+  /** "api" when read from the Subscription API, "settings" when entered manually. */
+  source: "api" | "settings";
+}
+
 /** App-function response shape. */
 export interface RateCardFunctionResponse {
   error?: string;
@@ -50,6 +86,10 @@ export interface RateCardFunctionResponse {
   officialCost?: OfficialCost;
   /** Diagnostic describing why the official cost is / isn't available. */
   officialCostDiag?: string;
+  /** Annual commitment (budget) — API-discovered or manually configured. */
+  officialBudget?: OfficialBudget;
+  /** Official per-capability costs from the Subscription API, when exposed. */
+  officialCapabilityCosts?: OfficialCapabilityCost[];
 }
 
 const PER_GIBI_HOURS = "Per 100,000 memory-gibibyte-hours";
@@ -100,7 +140,8 @@ export function normalizeCapabilityName(s: string): string {
 /** How a capability's billed quantity is derived from a billing usage event. */
 export type BillingUnit =
   | "gib" | "gib_days" | "gib_hours" | "host_hours" | "pod_hours" | "datapoints"
-  | "actions" | "requests" | "invocations" | "sessions" | "count";
+  | "actions" | "requests" | "invocations" | "sessions"
+  | "executions" | "container_hours" | "count";
 
 /**
  * Maps the unit-of-measure string from the rate card to the billing-event

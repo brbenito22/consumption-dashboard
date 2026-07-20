@@ -45,13 +45,20 @@ fetch dt.system.events, from:${tr.dqlFrom}, to:${tr.dqlTo}
 | sort interval asc
 `.trim();
 
-// bizevents is typically small — keep raw fetch but the aggressive session
-// cache (see useDql.ts, 600s TTL) keeps re-render impact low.
-export const bizeventsCountQuery = (tr: TimeRangeOption) => `
-fetch bizevents, from:${tr.dqlFrom}, to:${tr.dqlTo}
-| summarize count = count(), by: { interval = bin(timestamp, ${tr.binInterval}) }
+// COST-CAPPED: bizevents have no BILLING_USAGE_EVENT type (verified in-tenant),
+// so a raw fetch is unavoidable — but tenants with heavy bizevents (millions/day)
+// make long windows expensive. The chart window is capped at 7 days; larger
+// selections reuse the 7d scan (the label period shortens, the trend intent holds).
+export const bizeventsCountQuery = (tr: TimeRangeOption) => {
+  const capped = tr.hours > 168;
+  const from = capped ? "now()-7d" : tr.dqlFrom;
+  const bin = capped ? "6h" : tr.binInterval;
+  return `
+fetch bizevents, from:${from}, to:${tr.dqlTo}
+| summarize count = count(), by: { interval = bin(timestamp, ${bin}) }
 | sort interval asc
 `.trim();
+};
 
 // ── TOP CONTRIBUTORS (biggest ingestion offenders) ───────────────────────────
 
@@ -75,17 +82,17 @@ fetch spans, from:now()-6h, to:now()
 | limit 8
 `.trim();
 
-/** Top event kinds by count. */
-export const topEventKindsQuery = (tr: TimeRangeOption) => `
-fetch events, from:${tr.dqlFrom}, to:${tr.dqlTo}
+/** Top event kinds by count (fixed 6h — same offender-window policy as logs/spans). */
+export const topEventKindsQuery = (_tr: TimeRangeOption) => `
+fetch events, from:now()-6h, to:now()
 | summarize value = count(), by: { name = event.kind }
 | sort value desc
 | limit 8
 `.trim();
 
-/** Top business event types by count. */
-export const topBizTypesQuery = (tr: TimeRangeOption) => `
-fetch bizevents, from:${tr.dqlFrom}, to:${tr.dqlTo}
+/** Top business event types by count (fixed 6h — offender ranking is stable at 6h). */
+export const topBizTypesQuery = (_tr: TimeRangeOption) => `
+fetch bizevents, from:now()-6h, to:now()
 | summarize value = count(), by: { name = event.type }
 | sort value desc
 | limit 8
@@ -749,7 +756,9 @@ fetch dt.system.events, from:${tr.dqlFrom}, to:${tr.dqlTo}
   synth_actions_pm  = sum(coalesce(billed_synthetic_action_count, 0)),
   http_requests_pm  = sum(coalesce(billed_http_request_count, 0)),
   invocations_pm    = sum(coalesce(billed_invocations, 0)),
-  sessions_pm       = sum(coalesce(billed_sessions, 0))
+  sessions_pm       = sum(coalesce(billed_sessions, 0)),
+  cont_hours_pm     = sum(coalesce(billed_container_hours, 0.0)),
+  rows_pm           = count()
 }, by: { event_type = event.type, moment = bin(timestamp, 1m) }
 | summarize {
   data_gib          = sum(bytes_pm) / 1073741824.0,
@@ -763,10 +772,109 @@ fetch dt.system.events, from:${tr.dqlFrom}, to:${tr.dqlTo}
   http_requests     = sum(http_requests_pm),
   invocations       = sum(invocations_pm),
   sessions          = sum(sessions_pm),
+  container_hours   = sum(cont_hours_pm),
+  event_rows        = sum(rows_pm),
   event_count       = count()
 }, by: { event_type }
 | sort data_gib desc
 `.trim();
+
+/**
+ * Previous equal-length window for period-over-period comparison.
+ * "7d" compares now()-14d → now()-7d, "24h" compares now()-48h → now()-24h.
+ * Derived from `hours` so custom ranges keep working.
+ */
+export const prevWindowOf = (tr: TimeRangeOption): { dqlFrom: string; dqlTo: string } => ({
+  dqlFrom: `now()-${tr.hours * 2}h`,
+  dqlTo: `now()-${tr.hours}h`,
+});
+
+/**
+ * COST TREND — per-bin, per-capability billed quantities, priced client-side
+ * (computeCostTrend) so the Billing tab can chart COST over time and answer
+ * "did it go up or down?" per capability. Scans dt.system.events (~0 GB).
+ *
+ * Shape mirrors billingDetailByTypeQuery (same retain moment-collapse via
+ * bin 1m — see that query's docstring) with one extra outer dimension:
+ * `interval` at the timeframe's bin size.
+ */
+export const billingCostTrendQuery = (tr: TimeRangeOption) => `
+fetch dt.system.events, from:${tr.dqlFrom}, to:${tr.dqlTo}
+| filter event.kind == "BILLING_USAGE_EVENT"
+| fieldsAdd bytes = coalesce(billed_bytes, 0.0) + coalesce(ingested_bytes, 0.0)
+| summarize {
+  bytes_pm  = sum(bytes),
+  gib_hours_pm  = sum(coalesce(billed_gibibyte_hours, 0.0)),
+  pod_hours_pm  = sum(coalesce(billed_pod_hours, 0.0)),
+  host_hours_pm = sum(coalesce(billed_host_hours, 0.0)),
+  data_points_pm    = sum(coalesce(data_points, 0)),
+  synth_actions_pm  = sum(coalesce(billed_synthetic_action_count, 0)),
+  http_requests_pm  = sum(coalesce(billed_http_request_count, 0)),
+  invocations_pm    = sum(coalesce(billed_invocations, 0)),
+  sessions_pm       = sum(coalesce(billed_sessions, 0)),
+  cont_hours_pm     = sum(coalesce(billed_container_hours, 0.0)),
+  rows_pm           = count()
+}, by: { event_type = event.type, moment = bin(timestamp, 1m) }
+| summarize {
+  data_gib          = sum(bytes_pm) / 1073741824.0,
+  avg_gib           = avg(bytes_pm) / 1073741824.0,
+  gib_hours         = sum(gib_hours_pm),
+  pod_hours         = sum(pod_hours_pm),
+  host_hours        = sum(host_hours_pm),
+  data_points       = sum(data_points_pm),
+  synthetic_actions = sum(synth_actions_pm),
+  http_requests     = sum(http_requests_pm),
+  invocations       = sum(invocations_pm),
+  sessions          = sum(sessions_pm),
+  container_hours   = sum(cont_hours_pm),
+  event_rows        = sum(rows_pm),
+  event_count       = count()
+}, by: { event_type, interval = bin(moment, ${tr.binInterval}) }
+| sort interval asc
+`.trim();
+
+/**
+ * Same breakdown as billingDetailByTypeQuery, over the PREVIOUS equal window.
+ * Powers the "vs previous period" delta on the Billing tab and in the
+ * per-capability detail sheet. Scans dt.system.events (~0 GB).
+ */
+export const billingDetailByTypePrevQuery = (tr: TimeRangeOption) => {
+  const w = prevWindowOf(tr);
+  return `
+fetch dt.system.events, from:${w.dqlFrom}, to:${w.dqlTo}
+| filter event.kind == "BILLING_USAGE_EVENT"
+| fieldsAdd bytes = coalesce(billed_bytes, 0.0) + coalesce(ingested_bytes, 0.0)
+| summarize {
+  bytes_pm  = sum(bytes),
+  gib_hours_pm  = sum(coalesce(billed_gibibyte_hours, 0.0)),
+  pod_hours_pm  = sum(coalesce(billed_pod_hours, 0.0)),
+  host_hours_pm = sum(coalesce(billed_host_hours, 0.0)),
+  data_points_pm    = sum(coalesce(data_points, 0)),
+  synth_actions_pm  = sum(coalesce(billed_synthetic_action_count, 0)),
+  http_requests_pm  = sum(coalesce(billed_http_request_count, 0)),
+  invocations_pm    = sum(coalesce(billed_invocations, 0)),
+  sessions_pm       = sum(coalesce(billed_sessions, 0)),
+  cont_hours_pm     = sum(coalesce(billed_container_hours, 0.0)),
+  rows_pm           = count()
+}, by: { event_type = event.type, moment = bin(timestamp, 1m) }
+| summarize {
+  data_gib          = sum(bytes_pm) / 1073741824.0,
+  avg_gib           = avg(bytes_pm) / 1073741824.0,
+  gib_hours         = sum(gib_hours_pm),
+  pod_hours         = sum(pod_hours_pm),
+  host_hours        = sum(host_hours_pm),
+  data_points       = sum(data_points_pm),
+  synthetic_actions = sum(synth_actions_pm),
+  http_requests     = sum(http_requests_pm),
+  invocations       = sum(invocations_pm),
+  sessions          = sum(sessions_pm),
+  container_hours   = sum(cont_hours_pm),
+  event_rows        = sum(rows_pm),
+  event_count       = count()
+}, by: { event_type }
+| sort data_gib desc
+`.trim();
+};
 
 /** Hourly billing by capability — for time-series charts */
 export const billingHourlyQuery = (tr: TimeRangeOption) => `

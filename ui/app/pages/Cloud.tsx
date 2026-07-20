@@ -6,6 +6,7 @@ import { KpiCard } from "../components/KpiCard";
 import { PageHeader } from "../components/PageHeader";
 import { useDql, formatCount } from "../hooks/useDql";
 import { useRateCard } from "../hooks/useRateCard";
+import { useCostCalibration } from "../hooks/useCostCalibration";
 import { useCurrency } from "../context/CurrencyContext";
 import { normalizeCapabilityName } from "../constants/rateCard";
 import {
@@ -19,6 +20,8 @@ import {
 import { CloudServiceSheet } from "./CloudServiceSheet";
 import { useLang } from "../context/LanguageContext";
 import { kpiInfo } from "../i18n/kpiInfo";
+import { CapabilityCostPanel } from "../components/CapabilityCostPanel";
+import { tabIncludes } from "../constants/capabilityInfo";
 import type { TimeRangeOption } from "../types";
 
 interface CloudProps {
@@ -114,6 +117,7 @@ export const Cloud: React.FC<CloudProps> = ({ timeRange }) => {
   const { t } = useLang();
   const { money: formatCurrency } = useCurrency();
   const rateCard = useRateCard();
+  const calibration = useCostCalibration();
   // Which service tile is currently drilled into (null = sheet closed).
   const [selectedSvc, setSelectedSvc] = useState<string | null>(null);
 
@@ -142,12 +146,13 @@ export const Cloud: React.FC<CloudProps> = ({ timeRange }) => {
 
   const loading = awsQ.isLoading || azureQ.isLoading || gcpQ.isLoading;
 
-  // DPS metrics cost: data_points × Metrics-Ingest rate from the rate card.
+  // DPS metrics cost: data_points × Metrics-Ingest rate, calibrated to the
+  // official Subscription-API basis.
   const dataPoints = num(dpsQ.data, "data_points");
   const metricsRate = rateCard.ratesByName.get(
     normalizeCapabilityName("Metrics - Ingest & Process"),
   );
-  const dpsCost = metricsRate ? dataPoints * metricsRate.price : 0;
+  const dpsCost = (metricsRate ? dataPoints * metricsRate.price : 0) * calibration.factorFor("Metrics - Ingest & Process");
 
   return (
     <Flex flexDirection="column" gap={24} padding={24}>
@@ -277,6 +282,10 @@ export const Cloud: React.FC<CloudProps> = ({ timeRange }) => {
       </Flex>
 
       {/* Side sheet with the drill-down list of entities for the selected service. */}
+      <Divider />
+      {/* Cost attribution for cloud-relevant capabilities (host billing + metrics). */}
+      <CapabilityCostPanel include={tabIncludes("cloud")} />
+
       <CloudServiceSheet
         serviceKey={selectedSvc}
         onDismiss={() => setSelectedSvc(null)}

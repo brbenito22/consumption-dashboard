@@ -16,6 +16,12 @@ export interface BillingDetailRow {
   http_requests?: unknown;
   invocations?: unknown;
   sessions?: unknown;
+  /** Billed container-hours (Code Monitoring / Live Debugger). */
+  container_hours?: unknown;
+  /** Raw billing-event rows BEFORE the 1m moment collapse — one row per
+   *  Automation Workflow execution (their events share identical timestamps,
+   *  so the moment-collapsed event_count undercounts them). */
+  event_rows?: unknown;
   event_count?: unknown;
 }
 
@@ -55,6 +61,8 @@ const unitLabel = (unit: CapabilityRate["unit"]): string => {
     case "requests":    return "requests";
     case "invocations": return "invocations";
     case "sessions":    return "sessions";
+    case "executions":  return "executions";
+    case "container_hours": return "container-hours";
     default:            return "units";
   }
 };
@@ -73,6 +81,8 @@ function quantityForRow(row: BillingDetailRow, rate: CapabilityRate, windowHours
     case "requests":    return n(row.http_requests);
     case "invocations": return n(row.invocations);
     case "sessions":    return n(row.sessions);
+    case "executions":      return n(row.event_rows);
+    case "container_hours": return n(row.container_hours);
     // "count" capabilities expose no metered quantity in usage events → not priced
     default:            return 0;
   }
@@ -127,4 +137,70 @@ export function computeCost(
 
   out.sort((a, b) => b.cost - a.cost || b.quantity - a.quantity);
   return { rows: out, totalCost, totalGib, matchedCount, unmatchedCount };
+}
+
+// ── Cost over time ────────────────────────────────────────────────────────────
+
+/** A billing-trend row as returned by billingCostTrendQuery (detail row + time bin). */
+export interface BillingTrendRow extends BillingDetailRow {
+  interval?: unknown;
+}
+
+export interface CostTrendPoint {
+  timestamp: number;
+  cost: number;
+  /** Billed quantity in the capability's unit for this bin (0 for the total series). */
+  quantity: number;
+}
+
+export interface CostTrend {
+  /** Capability name → chronological cost/quantity points. */
+  byCapability: Map<string, CostTrendPoint[]>;
+  /** Total cost per bin across all matched capabilities. */
+  total: CostTrendPoint[];
+}
+
+/** Bin interval string ("5m" | "30m" | "1h" | "6h" | "1d") → hours. */
+export function binHoursOf(binInterval: string): number {
+  const m = /^(\d+)([mhd])$/.exec(binInterval.trim());
+  if (!m) return 1;
+  const v = Number(m[1]);
+  return m[2] === "m" ? v / 60 : m[2] === "h" ? v : v * 24;
+}
+
+/**
+ * Prices each (capability, bin) row and assembles chronological cost series.
+ * Retain (gib_days) uses the bin's own duration: avg retained GiB × bin days.
+ * Unmatched capabilities are skipped — they carry no price to chart.
+ */
+export function computeCostTrend(
+  rows: BillingTrendRow[],
+  ratesByName: Map<string, CapabilityRate>,
+  binHours: number,
+): CostTrend {
+  const byCapability = new Map<string, CostTrendPoint[]>();
+  const totalByTs = new Map<number, number>();
+
+  for (const row of rows) {
+    const capability = String(row.event_type ?? "Unknown");
+    const rate = ratesByName.get(normalizeCapabilityName(capability));
+    if (!rate) continue;
+    const ts = new Date(String(row.interval ?? "")).getTime();
+    if (!isFinite(ts)) continue;
+
+    const quantity = quantityForRow(row, rate, binHours);
+    const cost = quantity * rate.price;
+
+    const arr = byCapability.get(capability) ?? [];
+    arr.push({ timestamp: ts, cost, quantity });
+    byCapability.set(capability, arr);
+    totalByTs.set(ts, (totalByTs.get(ts) ?? 0) + cost);
+  }
+
+  for (const arr of byCapability.values()) arr.sort((a, b) => a.timestamp - b.timestamp);
+  const total = [...totalByTs.entries()]
+    .map(([timestamp, cost]) => ({ timestamp, cost, quantity: 0 }))
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  return { byCapability, total };
 }

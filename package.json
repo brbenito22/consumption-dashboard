@@ -5,7 +5,9 @@
   "scripts": {
     "start": "dt-app dev",
     "build": "dt-app build",
-    "deploy": "dt-app deploy"
+    "deploy": "dt-app deploy",
+    "complexity": "node scripts/complexity.mjs",
+    "complexity:ci": "node scripts/complexity.mjs --ci"
   },
   "dependencies": {
     "@dynatrace-sdk/client-query": "^1",

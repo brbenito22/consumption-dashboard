@@ -37,12 +37,14 @@ import {
   hostListDetailQuery,
 } from "../queries";
 import { useRateCard } from "../hooks/useRateCard";
+import { useCostCalibration } from "../hooks/useCostCalibration";
 import { useCurrency } from "../context/CurrencyContext";
 import { normalizeCapabilityName } from "../constants/rateCard";
 import { PageHeader } from "../components/PageHeader";
 import { chartColor, STATUS_COLORS } from "../constants/palette";
 import { useLang } from "../context/LanguageContext";
 import { kpiInfo } from "../i18n/kpiInfo";
+import { CapabilityCostPanel } from "../components/CapabilityCostPanel";
 import type { TimeRangeOption } from "../types";
 
 interface OverviewProps {
@@ -127,6 +129,7 @@ export const Overview: React.FC<OverviewProps> = ({ timeRange }) => {
   const hostsDetailQ = useDql(useMemo(() => hostListDetailQuery(), []));
 
   const rateCard = useRateCard();
+  const calibration = useCostCalibration();
   const { money } = useCurrency();
 
   // Chart series
@@ -184,10 +187,11 @@ export const Overview: React.FC<OverviewProps> = ({ timeRange }) => {
     return { total, byProvider };
   }, [hostsDetailQ.data]);
 
-  // DPS metrics cost — Metrics - Ingest & Process × rate card (same math as Cloud tab).
+  // DPS metrics cost — Metrics - Ingest & Process × rate card, calibrated to
+  // the official Subscription-API basis (same math as Cloud tab).
   const metricsRate = rateCard.ratesByName.get(normalizeCapabilityName("Metrics - Ingest & Process"));
   const dpsDataPoints = singleField(dpsQ.data as Record<string, unknown>[], "data_points");
-  const dpsCost = metricsRate ? dpsDataPoints * metricsRate.price : 0;
+  const dpsCost = (metricsRate ? dpsDataPoints * metricsRate.price : 0) * calibration.factorFor("Metrics - Ingest & Process");
 
   const cloudIsLoading = awsInvQ.isLoading || azureInvQ.isLoading || gcpInvQ.isLoading;
   const hasAnyCloudSignal = totalCloudEntities > 0 || cloudHosts.total > 0 || gcpProjects > 0;
@@ -432,6 +436,10 @@ export const Overview: React.FC<OverviewProps> = ({ timeRange }) => {
         <ConsumptionChart title="Events"          series={eventsSeries} unit="events"    isLoading={eventsQ.isLoading} error={eventsQ.error} color={chartColor(3)} />
         <ConsumptionChart title="Business Events" series={bizSeries}    unit="bizevents" isLoading={bizQ.isLoading}    error={bizQ.error}    color={chartColor(5)} />
       </Grid>
+
+      <Divider />
+      {/* Top capabilities by cost — the "where does the money actually go" view. */}
+      <CapabilityCostPanel limit={6} />
     </Flex>
   );
 };

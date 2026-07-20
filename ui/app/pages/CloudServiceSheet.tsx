@@ -7,6 +7,7 @@ import { Heading, Text } from "@dynatrace/strato-components/typography";
 import Colors from "@dynatrace/strato-design-tokens/colors";
 import { useDql } from "../hooks/useDql";
 import { useRateCard, type CapabilityRate } from "../hooks/useRateCard";
+import { useCostCalibration } from "../hooks/useCostCalibration";
 import { useCurrency } from "../context/CurrencyContext";
 import { normalizeCapabilityName } from "../constants/rateCard";
 import {
@@ -72,6 +73,7 @@ export const CloudServiceSheet: React.FC<CloudServiceSheetProps> = ({ serviceKey
   const { t } = useLang();
   const { money } = useCurrency();
   const rateCard = useRateCard();
+  const calibration = useCostCalibration();
   const meta = serviceKey ? CLOUD_SERVICES[serviceKey] : undefined;
   const isHostBacked = meta?.cls === "hostBacked";
 
@@ -129,7 +131,8 @@ export const CloudServiceSheet: React.FC<CloudServiceSheetProps> = ({ serviceKey
       const capSet = new Set<string>();
       for (const row of rows) {
         const rate = rateCard.ratesByName.get(normalizeCapabilityName(row.cap));
-        const rowCost = priceBillingRow(row, rate);
+        // Calibrated to the official Subscription-API basis per capability.
+        const rowCost = priceBillingRow(row, rate) * calibration.factorFor(row.cap);
         if (rowCost > 0) capSet.add(row.cap);
         cost += rowCost;
       }
@@ -141,7 +144,7 @@ export const CloudServiceSheet: React.FC<CloudServiceSheetProps> = ({ serviceKey
         cost_fmt: money(cost),
       };
     });
-  }, [hostsListQ.data, billingByHost, rateCard.ratesByName, money]);
+  }, [hostsListQ.data, billingByHost, rateCard.ratesByName, money, calibration]);
 
   const totalCost = useMemo(() => hostRows.reduce((s, r) => s + r.cost, 0), [hostRows]);
 

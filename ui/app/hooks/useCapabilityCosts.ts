@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useDql } from "./useDql";
 import { useRateCard } from "./useRateCard";
+import { useCostCalibration } from "./useCostCalibration";
 import { computeCost, type BillingDetailRow } from "../utils/costEngine";
 import { billingDetailByTypeQuery } from "../queries";
 import type { TimeRangeOption } from "../types";
@@ -22,6 +23,9 @@ export interface CapabilityCosts {
  */
 export function useCapabilityCosts(timeRange: TimeRangeOption): CapabilityCosts {
   const rateCard = useRateCard();
+  // Official calibration: aligns every estimate with the Subscription API's
+  // per-capability cost basis (DPS allowances), for ANY selected window.
+  const calibration = useCostCalibration();
   const detailQ = useDql<BillingDetailRow>(
     useMemo(() => billingDetailByTypeQuery(timeRange), [timeRange]),
   );
@@ -33,8 +37,11 @@ export function useCapabilityCosts(timeRange: TimeRangeOption): CapabilityCosts 
       timeRange.hours,
     );
     const costByCapability = new Map<string, number>();
+    let calibratedTotal = 0;
     for (const row of breakdown.rows) {
-      costByCapability.set(row.capability.toLowerCase(), row.cost);
+      const cost = row.cost * calibration.factorFor(row.capability);
+      costByCapability.set(row.capability.toLowerCase(), cost);
+      calibratedTotal += cost;
     }
     const costForPrefix = (prefix: string) => {
       const p = prefix.toLowerCase();
@@ -45,11 +52,11 @@ export function useCapabilityCosts(timeRange: TimeRangeOption): CapabilityCosts 
       return sum;
     };
     return {
-      isLoading: rateCard.isLoading || detailQ.isLoading,
+      isLoading: rateCard.isLoading || detailQ.isLoading || calibration.isLoading,
       error: detailQ.error,
       costByCapability,
-      totalCost: breakdown.totalCost,
+      totalCost: calibratedTotal,
       costForPrefix,
     };
-  }, [detailQ.data, detailQ.isLoading, detailQ.error, rateCard.ratesByName, rateCard.isLoading, timeRange.hours]);
+  }, [detailQ.data, detailQ.isLoading, detailQ.error, rateCard.ratesByName, rateCard.isLoading, timeRange.hours, calibration]);
 }
