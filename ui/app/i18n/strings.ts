@@ -136,6 +136,13 @@ export const STRINGS = {
   "alloc.health.title": { en: "Cost allocation", pt: "Alocação de custo" },
   "alloc.health.notConfigured": { en: "not configured", pt: "não configurada" },
 
+  // ── On-demand top-offender panels (billable scan gate) ─────────────────────
+  "gate.note": {
+    en: "Ranking the top contributors scans raw data in Grail (billable GiB, ~6h window). It only runs when you ask for it.",
+    pt: "Ranquear os maiores ofensores escaneia dado bruto no Grail (GiB cobrável, janela de ~6h). Só roda quando você pedir.",
+  },
+  "gate.cta": { en: "Load top contributors", pt: "Carregar maiores ofensores" },
+
   // ── Query Cost ─────────────────────────────────────────────────────────────
   "query.title": { en: "Query Cost", pt: "Custo de Query" },
   "query.subtitle": {

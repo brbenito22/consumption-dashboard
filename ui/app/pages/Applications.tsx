@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Flex, Grid, Divider } from "@dynatrace/strato-components/layouts";
 import { Heading, Text } from "@dynatrace/strato-components/typography";
 import { MeterbarIcon } from "@dynatrace/strato-icons";
@@ -45,8 +45,11 @@ export const Applications: React.FC<ApplicationsProps> = ({ timeRange }) => {
   const rumQ       = useDql(useMemo(() => rumActivityQuery(timeRange),       [timeRange]));
   const syntheticQ = useDql(useMemo(() => syntheticActivityQuery(timeRange), [timeRange]));
   const appEngineQ = useDql(useMemo(() => appEngineActivityQuery(timeRange), [timeRange]));
-  const topEndpointsQ = useDql(useMemo(() => topEndpointsQuery(timeRange), [timeRange]));
-  const topOpsQ       = useDql(useMemo(() => topAppOpsQuery(timeRange),    [timeRange]));
+  // Both scan raw spans (billable GiB) — gated behind a click like the
+  // Observability offender panels; everything else on this tab is ~0 GB.
+  const [offendersOn, setOffendersOn] = useState(false);
+  const topEndpointsQ = useDql(useMemo(() => topEndpointsQuery(timeRange), [timeRange]), offendersOn);
+  const topOpsQ       = useDql(useMemo(() => topAppOpsQuery(timeRange),    [timeRange]), offendersOn);
 
   const costs = useCapabilityCosts(timeRange);
   const { money } = useCurrency();
@@ -174,8 +177,8 @@ export const Applications: React.FC<ApplicationsProps> = ({ timeRange }) => {
         <KpiCard label="Trace Billing Cost" value={costs.isLoading ? "…" : money(traceCost)} subLabel={`last ${timeRange.hours}h · ingest+query`} isLoading={costs.isLoading} error={costs.error} colorVariant="critical" icon={consumptionIcon} info={kpiInfo(t, "traceBillingCost")} />
       </Flex>
       <Grid gridTemplateColumns="repeat(auto-fit, minmax(420px, 1fr))" gap={16}>
-        <TopContributors title="Top Endpoints (24h)" unit="cost" color={chartColor(0)} rows={toRows(topEndpointsQ.data)} isLoading={topEndpointsQ.isLoading} error={topEndpointsQ.error} sectionCost={costs.isLoading ? undefined : money(traceCost)} costForShare={shareCost(traceCost)} />
-        <TopContributors title="Top Operations (24h)" unit="cost" color={chartColor(5)} rows={toRows(topOpsQ.data)} isLoading={topOpsQ.isLoading} error={topOpsQ.error} sectionCost={costs.isLoading ? undefined : money(traceCost)} costForShare={shareCost(traceCost)} />
+        <TopContributors title="Top Endpoints (6h)" unit="cost" color={chartColor(0)} rows={toRows(topEndpointsQ.data)} isLoading={topEndpointsQ.isLoading} error={topEndpointsQ.error} sectionCost={costs.isLoading ? undefined : money(traceCost)} costForShare={shareCost(traceCost)} gate={{ active: offendersOn, onLoad: () => setOffendersOn(true), note: t("gate.note"), cta: t("gate.cta") }} />
+        <TopContributors title="Top Operations (6h)" unit="cost" color={chartColor(5)} rows={toRows(topOpsQ.data)} isLoading={topOpsQ.isLoading} error={topOpsQ.error} sectionCost={costs.isLoading ? undefined : money(traceCost)} costForShare={shareCost(traceCost)} gate={{ active: offendersOn, onLoad: () => setOffendersOn(true), note: t("gate.note"), cta: t("gate.cta") }} />
       </Grid>
 
       <Divider />

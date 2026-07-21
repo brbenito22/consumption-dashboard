@@ -1,6 +1,7 @@
 import React from "react";
 import { Surface, Flex } from "@dynatrace/strato-components/layouts";
 import { Heading, Text } from "@dynatrace/strato-components/typography";
+import { Button } from "@dynatrace/strato-components/buttons";
 import Colors from "@dynatrace/strato-design-tokens/colors";
 import { formatCount } from "../hooks/useDql";
 
@@ -25,6 +26,12 @@ interface TopContributorsProps {
   costForShare?: (sharePct: number) => string;
   /** Optional total cost for this capability/section (shown in the header). */
   sectionCost?: string;
+  /**
+   * Cost gate: when set and the panel hasn't been activated, the list is
+   * replaced by a note + button — the underlying fetch logs/spans/events scan
+   * (billable GiB) only runs when the user asks for it.
+   */
+  gate?: { active: boolean; onLoad: () => void; note: string; cta: string };
 }
 
 const shorten = (s: string, max = 52, fromStart = false) => {
@@ -34,7 +41,7 @@ const shorten = (s: string, max = 52, fromStart = false) => {
 
 /** Ranked "biggest offenders" list with proportional bars. */
 export const TopContributors: React.FC<TopContributorsProps> = ({
-  title, unit, color, rows, isLoading, error, truncateStart, costForShare, sectionCost,
+  title, unit, color, rows, isLoading, error, truncateStart, costForShare, sectionCost, gate,
 }) => {
   const max = rows.reduce((m, r) => Math.max(m, r.value), 0) || 1;
   const total = rows.reduce((s, r) => s + r.value, 0);
@@ -52,7 +59,12 @@ export const TopContributors: React.FC<TopContributorsProps> = ({
         )}
       </Flex>
 
-      {isLoading ? (
+      {gate && !gate.active ? (
+        <Flex flexDirection="column" gap={8} alignItems="flex-start">
+          <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued, lineHeight: 1.5 }}>{gate.note}</Text>
+          <Button variant="default" onClick={gate.onLoad}>{gate.cta}</Button>
+        </Flex>
+      ) : isLoading ? (
         <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued }}>Loading…</Text>
       ) : error ? (
         <Text textStyle="small" style={{ color: Colors.Text.Critical.Default }}>No data available</Text>

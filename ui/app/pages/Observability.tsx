@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Flex, Grid, Divider } from "@dynatrace/strato-components/layouts";
 import { Heading } from "@dynatrace/strato-components/typography";
 import { MeterbarIcon } from "@dynatrace/strato-icons";
@@ -56,11 +56,16 @@ export const Observability: React.FC<ObservabilityProps> = ({ timeRange }) => {
   const eventsQ    = useDql(useMemo(() => eventsCountQuery(timeRange),        [timeRange]));
   const bizQ       = useDql(useMemo(() => bizeventsCountQuery(timeRange),     [timeRange]));
 
-  // Top contributors (biggest offenders)
-  const topLogsQ   = useDql(useMemo(() => topLogSourcesQuery(timeRange), [timeRange]));
-  const topSpansQ  = useDql(useMemo(() => topSpanOpsQuery(timeRange),    [timeRange]));
-  const topEventsQ = useDql(useMemo(() => topEventKindsQuery(timeRange), [timeRange]));
-  const topBizQ    = useDql(useMemo(() => topBizTypesQuery(timeRange),   [timeRange]));
+  // Top contributors (biggest offenders) — gated behind a click: these are the
+  // only queries in the app that scan raw logs/spans/events (billable GiB), so
+  // they don't run on tab open. One switch covers all four panels: whoever
+  // wants the ranking wants the whole picture, and a single decision point
+  // keeps the cost intentional.
+  const [offendersOn, setOffendersOn] = useState(false);
+  const topLogsQ   = useDql(useMemo(() => topLogSourcesQuery(timeRange), [timeRange]), offendersOn);
+  const topSpansQ  = useDql(useMemo(() => topSpanOpsQuery(timeRange),    [timeRange]), offendersOn);
+  const topEventsQ = useDql(useMemo(() => topEventKindsQuery(timeRange), [timeRange]), offendersOn);
+  const topBizQ    = useDql(useMemo(() => topBizTypesQuery(timeRange),   [timeRange]), offendersOn);
 
   // Billing cost per capability group
   const costs = useCapabilityCosts(timeRange);
@@ -70,6 +75,7 @@ export const Observability: React.FC<ObservabilityProps> = ({ timeRange }) => {
   const traceCost = costs.costForPrefix("Traces");
   const eventCost = costs.costForPrefix("Events");
   const shareCost = (total: number) => (sharePct: number) => money((total * sharePct) / 100);
+  const offenderGate = { active: offendersOn, onLoad: () => setOffendersOn(true), note: t("gate.note"), cta: t("gate.cta") };
 
   const logsCountSeries = useMemo(() => toChartSeries(logsCountQ.data, "interval", "count"), [logsCountQ.data]);
   const logGibSeries    = useMemo(() => toChartSeries(logGibQ.data,    "interval", "val"),   [logGibQ.data]);
@@ -103,7 +109,7 @@ export const Observability: React.FC<ObservabilityProps> = ({ timeRange }) => {
       </Flex>
       <Grid gridTemplateColumns="repeat(auto-fit, minmax(420px, 1fr))" gap={16}>
         <ConsumptionChart title="Log Records Ingested" series={logsCountSeries} unit="records" isLoading={logsCountQ.isLoading} error={logsCountQ.error} color={chartColor(0)} />
-        <TopContributors title="Top Log Sources (24h)" unit="cost" color={chartColor(0)} rows={toRows(topLogsQ.data)} isLoading={topLogsQ.isLoading} error={topLogsQ.error} truncateStart sectionCost={costs.isLoading ? undefined : money(logCost)} costForShare={shareCost(logCost)} />
+        <TopContributors title="Top Log Sources (6h)" unit="cost" color={chartColor(0)} rows={toRows(topLogsQ.data)} isLoading={topLogsQ.isLoading} error={topLogsQ.error} truncateStart sectionCost={costs.isLoading ? undefined : money(logCost)} costForShare={shareCost(logCost)} gate={offenderGate} />
       </Grid>
 
       <Divider />
@@ -117,7 +123,7 @@ export const Observability: React.FC<ObservabilityProps> = ({ timeRange }) => {
       </Flex>
       <Grid gridTemplateColumns="repeat(auto-fit, minmax(420px, 1fr))" gap={16}>
         <ConsumptionChart title="Spans Ingested" series={spansSeries} unit="spans" isLoading={spansQ.isLoading} error={spansQ.error} color={chartColor(3)} />
-        <TopContributors title="Top Span Operations (24h)" unit="cost" color={chartColor(3)} rows={toRows(topSpansQ.data)} isLoading={topSpansQ.isLoading} error={topSpansQ.error} sectionCost={costs.isLoading ? undefined : money(traceCost)} costForShare={shareCost(traceCost)} />
+        <TopContributors title="Top Span Operations (6h)" unit="cost" color={chartColor(3)} rows={toRows(topSpansQ.data)} isLoading={topSpansQ.isLoading} error={topSpansQ.error} sectionCost={costs.isLoading ? undefined : money(traceCost)} costForShare={shareCost(traceCost)} gate={offenderGate} />
       </Grid>
 
       <Divider />
@@ -130,7 +136,7 @@ export const Observability: React.FC<ObservabilityProps> = ({ timeRange }) => {
       </Flex>
       <Grid gridTemplateColumns="repeat(auto-fit, minmax(420px, 1fr))" gap={16}>
         <ConsumptionChart title="Monitoring Events" series={eventsSeries} unit="events" isLoading={eventsQ.isLoading} error={eventsQ.error} color={chartColor(5)} />
-        <TopContributors title="Events by Kind" unit="cost" color={chartColor(5)} rows={toRows(topEventsQ.data)} isLoading={topEventsQ.isLoading} error={topEventsQ.error} sectionCost={costs.isLoading ? undefined : money(eventCost)} costForShare={shareCost(eventCost)} />
+        <TopContributors title="Events by Kind (6h)" unit="cost" color={chartColor(5)} rows={toRows(topEventsQ.data)} isLoading={topEventsQ.isLoading} error={topEventsQ.error} sectionCost={costs.isLoading ? undefined : money(eventCost)} costForShare={shareCost(eventCost)} gate={offenderGate} />
       </Grid>
 
       <Divider />
@@ -142,7 +148,7 @@ export const Observability: React.FC<ObservabilityProps> = ({ timeRange }) => {
       </Flex>
       <Grid gridTemplateColumns="repeat(auto-fit, minmax(420px, 1fr))" gap={16}>
         <ConsumptionChart title="Business Events" series={bizSeries} unit="bizevents" isLoading={bizQ.isLoading} error={bizQ.error} color={chartColor(7)} />
-        <TopContributors title="Top Business Event Types" unit="events" color={chartColor(7)} rows={toRows(topBizQ.data)} isLoading={topBizQ.isLoading} error={topBizQ.error} />
+        <TopContributors title="Top Business Event Types (6h)" unit="events" color={chartColor(7)} rows={toRows(topBizQ.data)} isLoading={topBizQ.isLoading} error={topBizQ.error} gate={offenderGate} />
       </Grid>
 
       <Divider />

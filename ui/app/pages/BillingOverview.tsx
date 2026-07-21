@@ -29,13 +29,13 @@ import { normalizeCapabilityName } from "../constants/rateCard";
 import { TIME_RANGE_OPTIONS, type TimeRangeOption } from "../types";
 
 // ── Cost Center app self-cost estimate constants ────────────────────────────
-// Rough GiB scanned per full user session across all tabs the app renders
-// (Overview + Applications + Observability + Billing + Predictions + Cloud +
-// Infrastructure). As of v1.51.0 the app migrated logs/events count queries
-// to BILLING_USAGE_EVENT (~0 GB) and narrowed top-offender windows 24h→6h.
-// The remaining scan is dominated by the 4 fetch-spans top-offender queries.
-// Anchored to ~5 GiB per full session (95% cut vs pre-optimization 30 GiB).
-const APP_GIB_SCANNED_PER_SESSION = 5;
+// Rough GiB scanned per full user session across all tabs the app renders.
+// As of v1.61.0 every raw fetch logs/spans/events offender panel is gated
+// behind an explicit click, so a default session's billable scan is just the
+// bizevents trend (fetch bizevents, 7d cap — no usage-event type exists for
+// bizevents). Loading the offender panels adds their 6h scans on top, by
+// deliberate user choice, so they're priced out of the default estimate.
+const APP_GIB_SCANNED_PER_SESSION = 2;
 const APP_SESSIONS_PER_DAY        = 1;   // "daily user" scenario
 
 interface BillingOverviewProps { timeRange: TimeRangeOption; }

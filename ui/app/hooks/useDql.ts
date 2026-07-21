@@ -41,13 +41,23 @@ function runQuery(query: string): Promise<unknown[]> {
   return promise;
 }
 
-export function useDql<T = Record<string, unknown>>(query: string): DqlResult<T> {
+/**
+ * `enabled: false` keeps the query parked — no Grail scan runs until the
+ * caller flips it to true (used to gate the billable fetch logs/spans/events
+ * top-offender panels behind an explicit click).
+ */
+export function useDql<T = Record<string, unknown>>(query: string, enabled = true): DqlResult<T> {
   const [data, setData] = useState<T[] | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!query) return;
+    if (!query || !enabled) {
+      setData(null);
+      setIsLoading(false);
+      setError(null);
+      return;
+    }
     let cancelled = false;
 
     setIsLoading(true);
@@ -66,7 +76,7 @@ export function useDql<T = Record<string, unknown>>(query: string): DqlResult<T>
       });
 
     return () => { cancelled = true; };
-  }, [query]);
+  }, [query, enabled]);
 
   return { data, isLoading, error };
 }
