@@ -12,9 +12,11 @@ Built with React + the Dynatrace **Strato** design system. Bilingual (EN / PT-BR
 ## What it does
 
 - Reconstructs cost from Dynatrace's own metering (`BILLING_USAGE_EVENT`) × the account rate card.
-- Shows the **authoritative Dynatrace Official Cost** (Platform Subscription API) side by side, with the billed period.
-- Stable **monthly / annual run-rate projections** (fixed 30-day basis — they don't drift when you change the viewing window).
+- Reads the **authoritative Dynatrace Official Cost per capability** (Platform Subscription API) and **calibrates every estimate in the app against it**, so all tabs speak the same numbers as Account Management.
+- Stable **monthly / annual run-rate projections** (fixed 30-day basis — they don't drift when you change the viewing window) and **budget vs. annual commitment**.
 - Per-capability cost, **biggest ingestion offenders**, per-host / per-node / per-namespace / per-workload attribution.
+- **Cost allocation** by cost center and product (`dt.cost.*` tags), with coverage detection.
+- **Query cost attribution** — which dashboard, user and app is burning the Grail query budget, plus detection of queries re-run mechanically.
 - Native Dynatrace **timeframe picker**, automatic currency from the contract (e.g. BRL), and an **EN / PT-BR** toggle for the explanatory text.
 
 ---
@@ -28,8 +30,11 @@ Built with React + the Dynatrace **Strato** design system. Bilingual (EN / PT-BR
 | **Observability** | Logs, traces, events, bizevents — volumes, rates and billing cost, with biggest ingestion offenders |
 | **Applications** | RUM (sessions), Synthetic (actions), AppEngine (invocations), tracing cost |
 | **Cloud** | Direct cloud integration (CloudWatch / Azure Monitor / GCP) footprint and **cloud-service metric (DDU) cost** — host cost stays in Infrastructure to avoid double counting |
-| **Billing** | End-to-end cost per capability × rate card, Estimated Cost KPIs, **Dynatrace Official Cost**, run-rate projections |
-| **Predictions** | Forecasted consumption × price for the next 7 / 14 / 30 days |
+| **Billing** | End-to-end cost per capability × rate card, Estimated Cost KPIs, **Dynatrace Official Cost**, budget vs. commitment, run-rate projections, CSV export |
+| **Cost Allocation** | Cost per **cost center** and per **product**, read from the `dt.cost.*` tags on billing events, with allocation-coverage detection |
+| **Query Cost** | Grail query spend by **dashboard**, **user** and **app**, plus **recoverable waste** from byte-identical queries re-run mechanically |
+
+> **Fixed window:** Billing, Cost Allocation and Query Cost hide the timeframe picker — they are pinned to the Account Management billing period so their figures can never drift from the official Cost & Usage view.
 
 ---
 
@@ -57,9 +62,19 @@ RUM (sessions), Synthetic (browser-monitor actions) and AppEngine (function invo
 ![Billing & Cost Analysis](docs/screenshots/billing.png)
 End-to-end **cost by capability** (consumption × rate card), Estimated Cost KPIs, run-rate projections, and the authoritative **Dynatrace Official Cost** (when the account rate card is configured). Purpose: the executive cost view, validated against Dynatrace's own billing.
 
-### Predictions — *forecast & budget*
-![Consumption Predictions](docs/screenshots/predictions.png)
-**Linear regression on 30 days** of billing usage events → projected consumption and cost for the next 7 / 14 / 30 days, per capability with trend direction, slope and model fit (R²). Purpose: forecast spend and catch capabilities trending up.
+### Cost Allocation — *who pays for what*
+> Screenshot pending.
+
+Cost broken down by **cost center** (who pays) and by **product** (what consumes), read from the `dt.cost.costcenter` / `dt.cost.product` attributes that Dynatrace attaches to billing usage events. Each team tile lists its cost per capability. The tab detects whether allocation is configured at all and, when it isn't, explains the two setup steps instead of showing an empty chart. Purpose: charge platform spend back to the teams that generate it.
+
+> Cost Allocation is **not retroactive** — it applies from the moment tagging is configured forward.
+
+### Query Cost — *who is burning the query budget*
+> Screenshot pending.
+
+Account Management reports Grail query spend as a single lump per capability. The billing usage events carry `user.email`, `client.application_context` and `client.source`, so this tab attributes that spend by **dashboard** (the id deep-links straight to the dashboard), **user** and **app**.
+
+It also flags **recoverable waste**: queries that repeat with a byte-identical scan. A person writing DQL never reproduces a byte count to the digit — that pattern is an auto-refreshing dashboard tile or an automation loop re-running one costly query. Only the repeats beyond the first are counted, since that spend bought no new data. Purpose: find the handful of tiles responsible for most of the query bill.
 
 ### Settings — Rate Card — *load real contract prices*
 ![Settings — Rate Card](docs/screenshots/settings-rate-card.png)
@@ -72,7 +87,7 @@ Choose **Account Rate Card** (real contract prices via an OAuth client) or the *
 ```
         ┌───────────────────────────────────────────────┐
         │              Cost Center — UI                  │
-        │           React + Strato · 7 tabs              │
+        │           React + Strato · 8 tabs              │
         └───────────────┬───────────────────┬───────────┘
                         │                   │
         DQL → Grail     │                   │   App Function (OAuth client-credentials)
@@ -89,7 +104,11 @@ Choose **Account Rate Card** (real contract prices via an OAuth client) or the *
                         │  Cost Engine  │  cost = quantity × price/unit
                         └───────┬───────┘
                                 ▼
-                 KPIs · per-capability · offenders · projections
+                        ┌───────────────┐
+                        │  Calibration  │  × (official cost ÷ estimate), per capability
+                        └───────┬───────┘
+                                ▼
+        KPIs · per-capability · offenders · projections · allocation · query cost
 ```
 
 Two data channels:
@@ -135,12 +154,31 @@ Returns each capability's price per unit in the contract currency. Falls back to
 **default rate card** (list prices, USD) when the account isn't configured. Capability matching is
 tolerant (`normalizeCapabilityName`), with name-based overrides for Retain / HTTP Monitor / Kubernetes.
 
-### 3. Dynatrace Official Cost
+### 3. Dynatrace Official Cost — and app-wide calibration
 
-Same function → `GET /sub/v2/accounts/{id}/subscriptions/{sub}/cost`. The authoritative amount
-Dynatrace bills, summed from the cost rows, with the period read from `startTime` / `endTime`. Shown
-as a KPI; **not** comparable to "Cost (last X)" — it covers Dynatrace's billing period, so compare on
-the same number of days.
+Same function → `GET /sub/v2/accounts/{id}/subscriptions/{sub}/cost`, called **once per capability**
+via the `capabilityKeys` filter. This is the authoritative amount Dynatrace bills, with the period
+read from `startTime` / `endTime`.
+
+Quantity × price alone never reconciles exactly — DPS applies contract allowances by licensing type
+that the raw metered quantities can't express (traces landed ≈ 13% high before this). So
+`useCostCalibration` derives a per-capability factor, `official cost ÷ estimated cost`, and every
+other tab multiplies its estimate by it. The result: the granular attribution stays granular, but the
+totals match Account Management instead of merely approaching it.
+
+Because the official figures cover Dynatrace's billing period, the Billing / Cost Allocation / Query
+Cost tabs pin their window to that same period (`useBillingPeriod`) and hide the timeframe picker.
+
+### 3b. Cost allocation and query attribution
+
+Both read the *same* `BILLING_USAGE_EVENT` stream, just grouped by attributes the billing API doesn't
+surface:
+
+| Tab | Attribute used | Note |
+|-----|----------------|------|
+| Cost Allocation | `dt.cost.costcenter` / `dt.cost.product` | Arrays of objects — `arrayFirst(...)[key]`, with null and the literal `"unassigned"` folded together |
+| Query Cost | `user.email`, `client.application_context`, `ai_generated` | One event per executed query, so `count()` is the true query count |
+| Query Cost (per dashboard) | `client.source` → `/ui/dashboard/<uuid>` | The URL host prefix is **per session**, so the uuid must be parsed out and grouped on — grouping by raw URL splits one offender into many |
 
 ### 4. Entities (hosts, Kubernetes, cloud)
 
@@ -176,7 +214,23 @@ service, populating once an integration is connected.
 - **Currency** — `CurrencyContext` formats values in the rate card's native currency (no FX conversion).
 - **i18n** — `LanguageContext` + `i18n/strings.ts`; the EN/PT-BR toggle switches **explanatory text only**. Capability names and units stay in English (they mirror Dynatrace's billing terms).
 - **Run-rate projection** — monthly/annual use a fixed trailing-30-day basis, so they don't shift with the viewing window.
-- **Cost optimization** — billing-event counts instead of raw `fetch spans`; module-level query cache (120 s TTL, promise dedup) in `useDql`.
+- **Calibration** — every cost figure outside Billing is multiplied by its capability's official/estimate factor, so no two tabs disagree.
+
+### Keeping the app itself cheap
+
+Cost Center bills like any other Grail consumer, so its own scan is treated as a feature:
+
+- Almost everything reads **`dt.system.events` (~0 GB)** — log/span/event counts come from
+  `BILLING_USAGE_EVENT` fields, not from `fetch logs` / `fetch spans`.
+- The **top-offender panels** (Observability, Applications) are the only queries that scan raw data.
+  They start **parked behind a "Load top contributors" button** — opening a tab costs nothing; the
+  6h raw scan runs only when someone asks for the ranking.
+- `useDql` keeps a module-level **query cache (10 min TTL, promise dedup)**, so identical DQL issued
+  by several tabs executes once. It also takes an `enabled` flag, which is what gates the panels above.
+- The Billing tab publishes an **estimate of what running the app costs**, priced from the Log Query rate.
+
+> This wasn't theoretical: before gating, the app appeared in its own repeated-queries detector —
+> its offender panels were re-running a 465 GiB scan on every tab open.
 
 ---
 
@@ -198,14 +252,21 @@ consumption-dashboard/
     │   ├── CurrencyContext.tsx
     │   └── LanguageContext.tsx
     ├── hooks/
-    │   ├── useDql.ts          ← queryExecute wrapper + session cache + formatters
-    │   ├── useRateCard.ts     ← calls the app function; builds rates by capability
+    │   ├── useDql.ts          ← queryExecute wrapper + session cache + `enabled` gate
+    │   ├── useRateCard.ts     ← app function; rates + official cost per capability + budget
+    │   ├── useBillingPeriod.ts    ← the fixed Account-Management billing window
+    │   ├── useCostCalibration.ts  ← official ÷ estimate factor, applied app-wide
+    │   ├── useCostAllocation.ts   ← cost center / product tiles + coverage
+    │   ├── useQueryCost.ts        ← query spend by dashboard / user / app + waste
     │   └── useCapabilityCosts.ts
-    ├── utils/costEngine.ts    ← quantity × price per unit
+    ├── utils/
+    │   ├── costEngine.ts      ← quantity × price per unit
+    │   └── settingsLink.ts    ← rate-card settings + dashboard deep links
     ├── constants/rateCard.ts  ← default rate card, units, name normalization
     ├── i18n/                  ← strings.ts (EN/PT) + kpiInfo helper
     ├── components/            ← KpiCard, TimeframeSelector, LanguageToggle, TopContributors…
-    └── pages/                 ← Overview, Infrastructure, Observability, Applications, Cloud, BillingOverview, Predictions
+    └── pages/                 ← Overview, Infrastructure, Observability, Applications,
+                                 Cloud, BillingOverview, CostAllocation, QueryCost
 ```
 
 ---
@@ -270,5 +331,7 @@ metering that feeds Dynatrace's official Cost Management.
 ## Notes
 
 - `dt.system.events` billing data can lag real-time consumption by a few hours.
-- Trial / sprint tenants typically have no real contract or subscription cost, so the account rate card and Official Cost may be unavailable there — the app falls back to default (USD) pricing.
+- Trial / sprint tenants typically have no real contract or subscription cost, so the account rate card and Official Cost may be unavailable there — the app falls back to default (USD) pricing, and calibration is skipped (factor 1).
 - The per-capability / per-offender figures are an estimate for granular attribution; the **Dynatrace Official Cost** KPI is the authoritative number.
+- **Cost Allocation is not retroactive.** On a tenant with no `dt.cost.*` tagging the tab renders its setup empty state rather than a misleading zero.
+- **Query Cost shows user email addresses.** The data already lives in the billing events and is visible to anyone with billing access, but treat it as a cost signal for fixing queries, not as individual performance monitoring — in practice the offender is usually a dashboard tile, not a person.
