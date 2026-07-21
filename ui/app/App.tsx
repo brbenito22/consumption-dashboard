@@ -7,7 +7,7 @@ import {
   AppsIcon,
   HostsIcon,
   ListIcon,
-  LineChartIcon,
+  PieChartIcon,
 } from "@dynatrace/strato-icons";
 import { Overview }        from "./pages/Overview";
 import { Infrastructure }  from "./pages/Infrastructure";
@@ -15,7 +15,7 @@ import { Observability }   from "./pages/Observability";
 import { Applications }    from "./pages/Applications";
 import { Cloud }           from "./pages/Cloud";
 import { BillingOverview } from "./pages/BillingOverview";
-import { Predictions }     from "./pages/Predictions";
+import { CostAllocation }  from "./pages/CostAllocation";
 import { SidebarNav, type SidebarNavEntry } from "./components/SidebarNav";
 import { CurrencyProvider, useCurrency } from "./context/CurrencyContext";
 import { LanguageProvider } from "./context/LanguageContext";
@@ -53,7 +53,7 @@ const NAV: NavEntry[] = [
   { key: "applications",   label: "Applications",         icon: <AppsIcon size={ICON_SIZE} />,      render: (tr) => <Applications   timeRange={tr} /> },
   { key: "cloud",          label: "Cloud",                icon: <HostsIcon size={ICON_SIZE} />,     render: (tr) => <Cloud          timeRange={tr} /> },
   { key: "billing",        label: "Billing",              icon: <ListIcon size={ICON_SIZE} />,      render: (tr) => <BillingOverview timeRange={tr} /> },
-  { key: "predictions",    label: "Predictions",          icon: <LineChartIcon size={ICON_SIZE} />, render: () => <Predictions /> },
+  { key: "allocation",     label: "Cost Allocation",      icon: <PieChartIcon size={ICON_SIZE} />,  render: () => <CostAllocation /> },
 ];
 
 export const App: React.FC = () => {
@@ -88,11 +88,11 @@ export const App: React.FC = () => {
       {/* ── Main content ── */}
       <Page.Main>
         {/* Global controls — timeframe (left) + language (right).
-            Billing has NO selector: its window is fixed to the Account
-            Management billing period so cost figures never diverge from the
-            official Cost & Usage view. Predictions is fixed-window too. */}
+            Billing and Cost Allocation have NO selector: their window is fixed
+            to the Account Management billing period so cost figures never
+            diverge from the official Cost & Usage view. */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "16px 24px 0" }}>
-          {activeKey !== "predictions" && activeKey !== "billing"
+          {activeKey !== "allocation" && activeKey !== "billing"
             ? <TimeframeSelector value={timeRange} onChange={setTimeRange} />
             : <span />}
           <LanguageToggle />

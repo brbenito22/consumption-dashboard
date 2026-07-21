@@ -904,29 +904,57 @@ fetch dt.system.events, from:${tr.dqlFrom}, to:${tr.dqlTo}
 | limit 200
 `.trim();
 
-// ── BILLING TREND — daily GiB per capability for predictions ─────────────────
+// ── COST ALLOCATION (dt.cost.costcenter / dt.cost.product) ────────────────────
 
-/** 30-day daily GiB + GiB-hours per capability — used for linear regression predictions */
-export const billingDailyTrendQuery = () => `
-fetch dt.system.events, from:now()-30d, to:now()
-| filter event.kind == "BILLING_USAGE_EVENT"
-| fieldsAdd day = bin(timestamp, 1d)
-| summarize {
-    data_gib  = sum(coalesce(billed_bytes, 0.0) / 1073741824.0),
-    gib_hours = sum(coalesce(billed_gibibyte_hours, 0.0))
-  }, by: { day, capability = event.type }
-| sort day asc
-`.trim();
+/** Which allocation dimension to break down by. */
+export type CostAllocationField = "costcenter" | "product";
 
-/** Last 7-day average GiB/day per capability — quick baseline for projections */
-export const billingBaselineQuery = () => `
-fetch dt.system.events, from:now()-7d, to:now()
+/**
+ * Per-{allocation key, capability} billed quantities from BILLING_USAGE_EVENT.
+ * Scans dt.system.events (~0 GB). The allocation attributes are ARRAYS of
+ * objects; `arrayFirst(...)[key]` reads the assigned key, and `coalesce(...,
+ * "unassigned")` folds BOTH the null case (capabilities that don't carry the
+ * field at all — most of them when allocation is unconfigured) AND the literal
+ * "unassigned" into a single "unassigned" bucket.
+ *
+ * Same retain moment-collapse (bin 1m) and quantity fields as
+ * billingDetailByTypeQuery, so priceDetailRow prices every capability
+ * correctly. Grouping keeps BOTH `alloc` and `event_type` — pricing is
+ * per-capability, and the UI tile lists a team's capabilities.
+ */
+export const costAllocationQuery = (tr: TimeRangeOption, field: CostAllocationField) => `
+fetch dt.system.events, from:${tr.dqlFrom}, to:${tr.dqlTo}
 | filter event.kind == "BILLING_USAGE_EVENT"
+| fieldsAdd alloc = coalesce(arrayFirst(dt.cost.${field})[key], "unassigned")
+| fieldsAdd bytes = coalesce(billed_bytes, 0.0) + coalesce(ingested_bytes, 0.0)
 | summarize {
-    data_gib  = sum(coalesce(billed_bytes, 0.0) / 1073741824.0),
-    gib_hours = sum(coalesce(billed_gibibyte_hours, 0.0)),
-    event_count = count()
-  }, by: { capability = event.type }
+  bytes_pm  = sum(bytes),
+  gib_hours_pm  = sum(coalesce(billed_gibibyte_hours, 0.0)),
+  pod_hours_pm  = sum(coalesce(billed_pod_hours, 0.0)),
+  host_hours_pm = sum(coalesce(billed_host_hours, 0.0)),
+  data_points_pm    = sum(coalesce(data_points, 0)),
+  synth_actions_pm  = sum(coalesce(billed_synthetic_action_count, 0)),
+  http_requests_pm  = sum(coalesce(billed_http_request_count, 0)),
+  invocations_pm    = sum(coalesce(billed_invocations, 0)),
+  sessions_pm       = sum(coalesce(billed_sessions, 0)),
+  cont_hours_pm     = sum(coalesce(billed_container_hours, 0.0)),
+  rows_pm           = count()
+}, by: { alloc, event_type = event.type, moment = bin(timestamp, 1m) }
+| summarize {
+  data_gib          = sum(bytes_pm) / 1073741824.0,
+  avg_gib           = avg(bytes_pm) / 1073741824.0,
+  gib_hours         = sum(gib_hours_pm),
+  pod_hours         = sum(pod_hours_pm),
+  host_hours        = sum(host_hours_pm),
+  data_points       = sum(data_points_pm),
+  synthetic_actions = sum(synth_actions_pm),
+  http_requests     = sum(http_requests_pm),
+  invocations       = sum(invocations_pm),
+  sessions          = sum(sessions_pm),
+  container_hours   = sum(cont_hours_pm),
+  event_rows        = sum(rows_pm),
+  event_count       = count()
+}, by: { alloc, event_type }
 | sort data_gib desc
 `.trim();
 

@@ -96,6 +96,46 @@ export const STRINGS = {
     pt: "Clique em uma capability para ver a tendência de custo e a comparação de período.",
   },
 
+  // ── Cost Allocation tab ────────────────────────────────────────────────────
+  "alloc.title": { en: "Cost Allocation", pt: "Alocação de Custo" },
+  "alloc.subtitle": {
+    en: "Cost attributed by cost center (who pays) and by product (what consumes), read from the dt.cost.costcenter / dt.cost.product tags on billing usage events. Billing-period window, calibrated to the official cost basis.",
+    pt: "Custo atribuído por centro de custo (quem paga) e por produto (o que consome), lido das tags dt.cost.costcenter / dt.cost.product dos eventos de billing. Janela do período de faturamento, calibrado à base oficial de custo.",
+  },
+  "alloc.byCostCenter": { en: "By cost center", pt: "Por centro de custo" },
+  "alloc.byProduct": { en: "By product", pt: "Por produto" },
+  "alloc.coverage": { en: "Allocation coverage", pt: "Cobertura de alocação" },
+  "alloc.allocated": { en: "allocated", pt: "alocado" },
+  "alloc.unassigned": { en: "unassigned", pt: "não alocado" },
+  "alloc.teamCapabilities": { en: "Capabilities", pt: "Capabilities" },
+  "alloc.pctOfAllocated": { en: "of allocated cost", pt: "do custo alocado" },
+  "alloc.pctOfTotal": { en: "of total cost", pt: "do custo total" },
+
+  // ── Cost Allocation — not-configured empty state ───────────────────────────
+  "alloc.empty.title": { en: "Cost Allocation is not configured yet", pt: "A Alocação de Custo ainda não está configurada" },
+  "alloc.empty.p1": {
+    en: "Every billing usage event in this environment is currently \"unassigned\" — no cost center or product tags are set, so consumption can't be attributed to a team or workload.",
+    pt: "Todos os eventos de billing deste ambiente estão como \"unassigned\" — nenhuma tag de centro de custo ou produto está definida, então o consumo não pode ser atribuído a um time ou workload.",
+  },
+  "alloc.empty.p2": {
+    en: "Two steps enable it (not retroactive — only future usage is tagged):",
+    pt: "Dois passos habilitam (não é retroativo — só o uso futuro é taggeado):",
+  },
+  "alloc.empty.step1": {
+    en: "Allow-list the cost centers and products: Account Management → Subscription → Cost management → Cost allocation (max 250 each).",
+    pt: "Cadastrar (allow-list) os centros de custo e produtos: Account Management → Subscription → Cost management → Cost allocation (máx. 250 de cada).",
+  },
+  "alloc.empty.step2": {
+    en: "Tag the sources: OneAgent host tag (dt.cost.costcenter=X), Kubernetes namespace label + metadata enrichment, OpenPipeline \"Cost allocation\" stage, or OTEL_RESOURCE_ATTRIBUTES for OTLP.",
+    pt: "Taggear as fontes: host tag do OneAgent (dt.cost.costcenter=X), label de namespace Kubernetes + metadata enrichment, stage \"Cost allocation\" do OpenPipeline, ou OTEL_RESOURCE_ATTRIBUTES para OTLP.",
+  },
+  "alloc.empty.note": {
+    en: "Once tagging starts, teams appear here automatically — this tab detects allocation directly from the billing events, no app configuration needed.",
+    pt: "Assim que o tagueamento começar, os times aparecem aqui automaticamente — esta aba detecta a alocação direto dos eventos de billing, sem configurar nada no app.",
+  },
+  "alloc.health.title": { en: "Cost allocation", pt: "Alocação de custo" },
+  "alloc.health.notConfigured": { en: "not configured", pt: "não configurada" },
+
   // ── Per-tab capability cost panel ──────────────────────────────────────────
   "costpanel.title": { en: "Where the money goes", pt: "Para onde vai o dinheiro" },
   "costpanel.subtitle": {

@@ -45,6 +45,7 @@ import { chartColor, STATUS_COLORS } from "../constants/palette";
 import { useLang } from "../context/LanguageContext";
 import { kpiInfo } from "../i18n/kpiInfo";
 import { CapabilityCostPanel } from "../components/CapabilityCostPanel";
+import { AllocationHealthCard } from "../components/AllocationHealthCard";
 import type { TimeRangeOption } from "../types";
 
 interface OverviewProps {
@@ -264,6 +265,8 @@ export const Overview: React.FC<OverviewProps> = ({ timeRange }) => {
             colorVariant="positive"
             info={kpiInfo(t, "monitoredServices")}
           />
+          {/* Cost-allocation coverage — reuses dt.system.events (~0 GB). */}
+          <AllocationHealthCard />
         </Flex>
       </Flex>
 

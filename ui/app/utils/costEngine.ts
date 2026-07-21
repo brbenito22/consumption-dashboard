@@ -89,6 +89,16 @@ function quantityForRow(row: BillingDetailRow, rate: CapabilityRate, windowHours
 }
 
 /**
+ * Prices a single billing-detail row (quantity × rate). Exposed so callers
+ * that group by an EXTRA dimension (e.g. Cost Allocation's cost center /
+ * product) can price each {dimension, capability} row without re-running the
+ * full computeCost aggregation. Returns 0 for count-only capabilities.
+ */
+export function priceDetailRow(row: BillingDetailRow, rate: CapabilityRate, windowHours: number): number {
+  return quantityForRow(row, rate, windowHours) * rate.price;
+}
+
+/**
  * Cross-references actual consumption (billing usage events) with the
  * environment rate card to produce an end-to-end cost breakdown.
  */
