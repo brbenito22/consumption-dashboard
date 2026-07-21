@@ -10,12 +10,25 @@ const SETTINGS_APP = "dynatrace.classic.settings";
  *   {tenantUrl}/ui/apps/dynatrace.classic.settings/ui/settings/app:{appId}:{schemaId}
  */
 export function rateCardSettingsUrl(): string {
+  return `${environmentBase()}/ui/apps/${SETTINGS_APP}/ui/settings/app:${APP_ID}:${SCHEMA_ID}`;
+}
+
+/**
+ * Deep link to a dashboard by id — lets the Query Cost tab jump straight to the
+ * dashboard that is running the expensive query. Built from the SDK environment
+ * URL rather than window.location: the app runs on its own per-session
+ * subdomain, so its own origin would not resolve the platform route.
+ */
+export function dashboardUrl(dashboardId: string): string {
+  return `${environmentBase()}/ui/dashboard/${encodeURIComponent(dashboardId)}`;
+}
+
+function environmentBase(): string {
   let base = "";
   try {
     base = getEnvironmentUrl();
   } catch {
     base = typeof window !== "undefined" ? window.location.origin : "";
   }
-  base = base.replace(/\/+$/, "");
-  return `${base}/ui/apps/${SETTINGS_APP}/ui/settings/app:${APP_ID}:${SCHEMA_ID}`;
+  return base.replace(/\/+$/, "");
 }

@@ -136,6 +136,55 @@ export const STRINGS = {
   "alloc.health.title": { en: "Cost allocation", pt: "Alocação de custo" },
   "alloc.health.notConfigured": { en: "not configured", pt: "não configurada" },
 
+  // ── Query Cost ─────────────────────────────────────────────────────────────
+  "query.title": { en: "Query Cost", pt: "Custo de Query" },
+  "query.subtitle": {
+    en: "Grail query spend broken down by who ran the query and which app it came from — read from user.email and client.application_context on the billing usage events. Account Management reports this as a single lump per capability. Billing-period window, same calibrated cost basis as every other tab.",
+    pt: "Gasto com query no Grail detalhado por quem rodou e de qual app veio — lido de user.email e client.application_context nos eventos de billing. O Account Management mostra isso como um valor único por capability. Janela do período de faturamento, mesma base calibrada das demais abas.",
+  },
+  "query.total": { en: "Query cost", pt: "Custo de query" },
+  "query.scanned": { en: "Scanned", pt: "Escaneado" },
+  "query.count": { en: "Queries", pt: "Queries" },
+  "query.avg": { en: "Avg per query", pt: "Média por query" },
+  "query.biggest": { en: "Largest single query", pt: "Maior query única" },
+  "query.byUser": { en: "By user", pt: "Por usuário" },
+  "query.byApp": { en: "By app", pt: "Por app" },
+  "query.byDashboard": { en: "By dashboard", pt: "Por dashboard" },
+  "query.dashboard": { en: "Dashboard", pt: "Dashboard" },
+  "query.viewers": { en: "Viewers", pt: "Usuários" },
+  "query.dash.note": {
+    en: "Dashboards are the usual driver of query spend: every tile re-runs its query on open and on auto-refresh, multiplied by every person with it open. The id links straight to the dashboard — narrow the tile's timeframe or add an early filter there.",
+    pt: "Dashboards costumam dominar o gasto de query: cada tile re-executa sua query ao abrir e a cada auto-refresh, multiplicado por cada pessoa com ele aberto. O id abre direto o dashboard — reduza o timeframe do tile ou adicione filter cedo por lá.",
+  },
+  "query.dash.none": { en: "No dashboard-driven queries in this period.", pt: "Nenhuma query vinda de dashboard neste período." },
+  "query.ai": { en: "AI-generated", pt: "Gerado por IA" },
+  "query.user": { en: "User", pt: "Usuário" },
+  "query.app": { en: "App", pt: "App" },
+  "query.cost": { en: "Cost", pt: "Custo" },
+  "query.share": { en: "% of query cost", pt: "% do custo de query" },
+
+  // ── Query Cost — repeated-query waste ──────────────────────────────────────
+  "query.waste.title": { en: "Recoverable: identical queries re-run mechanically", pt: "Recuperável: queries idênticas re-executadas mecanicamente" },
+  "query.waste.body": {
+    en: "These queries repeat with a byte-identical scan. A person writing DQL never reproduces a byte count to the digit — this is an auto-refreshing dashboard tile or an automation loop re-running one costly query. Only the repeats beyond the first are counted below: that spend bought no new data.",
+    pt: "Estas queries se repetem com scan idêntico byte a byte. Quem escreve DQL na mão nunca reproduz a contagem exata de bytes — isso é tile de dashboard com auto-refresh ou loop de automação re-executando uma query cara. Abaixo contamos só as repetições além da primeira: esse gasto não trouxe nenhum dado novo.",
+  },
+  "query.waste.kpi": { en: "Wasted on repeats", pt: "Desperdiçado em repetição" },
+  "query.waste.fix": {
+    en: "Fix: open the dashboard or workflow behind the app below, narrow the tile's timeframe, add a filter early in the DQL, or lower the auto-refresh interval.",
+    pt: "Correção: abra o dashboard ou workflow por trás do app abaixo, reduza o timeframe do tile, adicione filter cedo no DQL, ou aumente o intervalo de auto-refresh.",
+  },
+  "query.waste.repeats": { en: "Repeats", pt: "Repetições" },
+  "query.waste.each": { en: "Each", pt: "Cada" },
+  "query.waste.wasted": { en: "Wasted", pt: "Desperdiçado" },
+  "query.waste.window": { en: "Window", pt: "Janela" },
+  "query.waste.none": { en: "No mechanically repeated queries detected in this period.", pt: "Nenhuma query repetida mecanicamente detectada neste período." },
+  "query.empty": { en: "No query billing events in this period.", pt: "Nenhum evento de billing de query neste período." },
+  "query.privacy": {
+    en: "Attribution comes from the billing usage events themselves and is visible to anyone with billing access — treat it as a cost signal for fixing queries, not as individual performance monitoring.",
+    pt: "A atribuição vem dos próprios eventos de billing e é visível a quem tem acesso de billing — trate como sinal de custo para corrigir queries, não como monitoramento individual de desempenho.",
+  },
+
   // ── Per-tab capability cost panel ──────────────────────────────────────────
   "costpanel.title": { en: "Where the money goes", pt: "Para onde vai o dinheiro" },
   "costpanel.subtitle": {

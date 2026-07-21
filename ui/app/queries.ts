@@ -958,6 +958,100 @@ fetch dt.system.events, from:${tr.dqlFrom}, to:${tr.dqlTo}
 | sort data_gib desc
 `.trim();
 
+// ── QUERY COST (who is burning the Grail query budget) ───────────────────────
+
+/**
+ * Per-{user, app, capability} Grail query spend from BILLING_USAGE_EVENT.
+ * Scans dt.system.events (~0 GB).
+ *
+ * The "- Query" capabilities (Log / Events / Traces / DEM) bill per GiB
+ * SCANNED, so `billed_bytes` IS the metered quantity and `data_gib` feeds
+ * priceDetailRow directly (their rate.unit is "gib"). Unlike the retain
+ * snapshots there is deliberately NO moment-collapse here: these events are one
+ * row per executed query, so count() is the true query count.
+ */
+export const queryCostQuery = (tr: TimeRangeOption) => `
+fetch dt.system.events, from:${tr.dqlFrom}, to:${tr.dqlTo}
+| filter event.kind == "BILLING_USAGE_EVENT" and endsWith(event.type, "- Query")
+| fieldsAdd bytes = coalesce(billed_bytes, 0.0)
+| summarize {
+  data_gib   = sum(bytes) / 1073741824.0,
+  queries    = count(),
+  ai_queries = countIf(ai_generated == true),
+  max_bytes  = max(bytes)
+}, by: {
+  actor      = coalesce(user.email, "unknown"),
+  app        = coalesce(client.application_context, "unknown"),
+  event_type = event.type
+}
+| sort data_gib desc
+| limit 500
+`.trim();
+
+/**
+ * Query spend per DASHBOARD. `client.application_context` only says
+ * "dynatrace.dashboards"; the dashboard's own id lives in `client.source` as
+ * `/ui/dashboard/<uuid>`.
+ *
+ * The host prefix of that URL is per-session (each app session gets its own
+ * random subdomain), so the SAME dashboard shows up under many distinct
+ * `client.source` values — grouping by the raw URL splits one offender into
+ * several small ones. Extracting the uuid and grouping by THAT is what makes
+ * the real cost visible. Trailing "?" and "/" are trimmed so query params and
+ * sub-routes collapse onto the same dashboard.
+ *
+ * Kept split by capability because a dashboard can mix Log and Trace tiles,
+ * which price differently.
+ */
+export const queryCostByDashboardQuery = (tr: TimeRangeOption) => `
+fetch dt.system.events, from:${tr.dqlFrom}, to:${tr.dqlTo}
+| filter event.kind == "BILLING_USAGE_EVENT" and endsWith(event.type, "- Query")
+| filter contains(client.source, "/ui/dashboard/")
+| fieldsAdd parts = splitString(client.source, "/ui/dashboard/")
+| fieldsAdd tail = if(arraySize(parts) > 1, parts[1], else: "")
+| fieldsAdd dashboard_id = splitString(splitString(tail, "?")[0], "/")[0]
+| filter isNotNull(dashboard_id) and dashboard_id != ""
+| summarize {
+  data_gib  = sum(coalesce(billed_bytes, 0.0)) / 1073741824.0,
+  queries   = count(),
+  viewers   = countDistinctExact(user.email),
+  max_bytes = max(coalesce(billed_bytes, 0.0))
+}, by: { dashboard_id, event_type = event.type }
+| sort data_gib desc
+| limit 200
+`.trim();
+
+/**
+ * Repeated-identical-query detector — the highest-leverage finding in the tab.
+ *
+ * Groups by the EXACT scanned byte count per {user, app, capability}. A human
+ * typing DQL never reproduces a byte count to the digit; a dashboard tile or an
+ * alerting loop re-running one costly query does it every refresh. `wasted_gib`
+ * charges only the repeats BEYOND the first execution, so it reads as "GiB that
+ * bought nothing new". Floor of 1 GiB keeps cheap chatter out.
+ */
+export const repeatedQueriesQuery = (tr: TimeRangeOption) => `
+fetch dt.system.events, from:${tr.dqlFrom}, to:${tr.dqlTo}
+| filter event.kind == "BILLING_USAGE_EVENT" and endsWith(event.type, "- Query")
+| filter coalesce(billed_bytes, 0.0) > 1073741824.0
+| summarize {
+  repeats    = count(),
+  first_seen = min(timestamp),
+  last_seen  = max(timestamp)
+}, by: {
+  actor      = coalesce(user.email, "unknown"),
+  app        = coalesce(client.application_context, "unknown"),
+  event_type = event.type,
+  bytes      = billed_bytes
+}
+| filter repeats > 2
+| fieldsAdd gib_each   = toDouble(bytes) / 1073741824.0
+| fieldsAdd data_gib   = gib_each * repeats
+| fieldsAdd wasted_gib = gib_each * (repeats - 1)
+| sort wasted_gib desc
+| limit 25
+`.trim();
+
 // ── APPLICATIONS (from dt.system.events — builtin:billing.* is empty here) ────
 
 /**

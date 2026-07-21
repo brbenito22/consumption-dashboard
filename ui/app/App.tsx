@@ -8,6 +8,7 @@ import {
   HostsIcon,
   ListIcon,
   PieChartIcon,
+  QueryTreeIcon,
 } from "@dynatrace/strato-icons";
 import { Overview }        from "./pages/Overview";
 import { Infrastructure }  from "./pages/Infrastructure";
@@ -16,6 +17,7 @@ import { Applications }    from "./pages/Applications";
 import { Cloud }           from "./pages/Cloud";
 import { BillingOverview } from "./pages/BillingOverview";
 import { CostAllocation }  from "./pages/CostAllocation";
+import { QueryCost }       from "./pages/QueryCost";
 import { SidebarNav, type SidebarNavEntry } from "./components/SidebarNav";
 import { CurrencyProvider, useCurrency } from "./context/CurrencyContext";
 import { LanguageProvider } from "./context/LanguageContext";
@@ -42,6 +44,11 @@ const CurrencySync: React.FC = () => {
 
 const ICON_SIZE = 18;
 
+/** Tabs whose window is pinned to the Account Management billing period —
+ *  they hide the timeframe selector so their cost figures can never drift
+ *  from the official Cost & Usage view. */
+const FIXED_WINDOW_TABS = new Set(["billing", "allocation", "querycost"]);
+
 interface NavEntry extends SidebarNavEntry {
   render: (tr: TimeRangeOption) => React.ReactNode;
 }
@@ -54,6 +61,7 @@ const NAV: NavEntry[] = [
   { key: "cloud",          label: "Cloud",                icon: <HostsIcon size={ICON_SIZE} />,     render: (tr) => <Cloud          timeRange={tr} /> },
   { key: "billing",        label: "Billing",              icon: <ListIcon size={ICON_SIZE} />,      render: (tr) => <BillingOverview timeRange={tr} /> },
   { key: "allocation",     label: "Cost Allocation",      icon: <PieChartIcon size={ICON_SIZE} />,  render: () => <CostAllocation /> },
+  { key: "querycost",      label: "Query Cost",           icon: <QueryTreeIcon size={ICON_SIZE} />, render: () => <QueryCost /> },
 ];
 
 export const App: React.FC = () => {
@@ -88,11 +96,11 @@ export const App: React.FC = () => {
       {/* ── Main content ── */}
       <Page.Main>
         {/* Global controls — timeframe (left) + language (right).
-            Billing and Cost Allocation have NO selector: their window is fixed
-            to the Account Management billing period so cost figures never
-            diverge from the official Cost & Usage view. */}
+            Billing, Cost Allocation and Query Cost have NO selector: their
+            window is fixed to the Account Management billing period so cost
+            figures never diverge from the official Cost & Usage view. */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "16px 24px 0" }}>
-          {activeKey !== "allocation" && activeKey !== "billing"
+          {!FIXED_WINDOW_TABS.has(activeKey)
             ? <TimeframeSelector value={timeRange} onChange={setTimeRange} />
             : <span />}
           <LanguageToggle />
