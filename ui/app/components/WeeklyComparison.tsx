@@ -5,6 +5,7 @@ import { MeterbarIcon } from "@dynatrace/strato-icons";
 import Colors from "@dynatrace/strato-design-tokens/colors";
 import { KpiCard } from "./KpiCard";
 import { formatCount } from "../hooks/useDql";
+import { useLang } from "../context/LanguageContext";
 import { STATUS_COLORS } from "../constants/palette";
 
 const consumptionIcon = <MeterbarIcon style={{ width: 16, height: 16 }} />;
@@ -26,8 +27,22 @@ function pctChange(current: number, prev: number): string {
   return `${sign}${pct.toFixed(1)}%`;
 }
 
-function pctVariant(current: number, prev: number): "positive" | "critical" | "default" {
+/**
+ * A drop this steep is ambiguous: it can be a real optimization, or a broken
+ * ingestion pipeline. Either way it deserves a look — showing it as a green
+ * "cost went down" would be the app congratulating a possible outage.
+ */
+const COLLAPSE_PCT = -50;
+
+function pctDrop(current: number, prev: number): number | null {
+  if (prev <= 0) return null;
+  return ((current - prev) / prev) * 100;
+}
+
+function pctVariant(current: number, prev: number): "positive" | "critical" | "warning" | "default" {
   if (prev === 0) return "default";
+  const drop = pctDrop(current, prev);
+  if (drop !== null && drop <= COLLAPSE_PCT) return "warning";
   return current <= prev ? "positive" : "critical";
 }
 
@@ -51,14 +66,19 @@ const MiniBox: React.FC<{ label: string; value: string; emphasis?: boolean }> = 
 
 /** One comparison card: title + change badge + previous/current/next boxes. */
 const ComparisonCard: React.FC<{ m: WeeklyMetric }> = ({ m }) => {
+  const { t } = useLang();
   const next  = nextWeekEstimate(m.current, m.prev);
   const isUp  = m.current > m.prev && m.prev > 0;
   const isNew = m.prev === 0 && m.current > 0;
+  const drop = pctDrop(m.current, m.prev);
+  const collapsed = drop !== null && drop <= COLLAPSE_PCT;
   const badgeColor = m.loading ? Colors.Text.Neutral.Subdued
-    : isUp ? STATUS_COLORS.critical : isNew ? STATUS_COLORS.warning : STATUS_COLORS.ideal;
+    : isUp ? STATUS_COLORS.critical
+    : isNew || collapsed ? STATUS_COLORS.warning
+    : STATUS_COLORS.ideal;
   const badgeBg = m.loading ? Colors.Background.Field.Neutral.Default
     : isUp ? Colors.Background.Field.Critical.Default
-    : isNew ? Colors.Background.Field.Warning.Default
+    : isNew || collapsed ? Colors.Background.Field.Warning.Default
     : Colors.Background.Field.Success.Default;
 
   return (
@@ -81,6 +101,11 @@ const ComparisonCard: React.FC<{ m: WeeklyMetric }> = ({ m }) => {
         <MiniBox label="This week"      value={m.loading ? "…" : formatCount(m.current)} emphasis />
         <MiniBox label="Next week est." value={m.loading ? "…" : `≈ ${formatCount(next)}`} />
       </Flex>
+      {collapsed && !m.loading && (
+        <Text textStyle="small" style={{ color: Colors.Text.Warning.Default, lineHeight: 1.45 }}>
+          {t("weekly.collapse")}
+        </Text>
+      )}
     </Surface>
   );
 };

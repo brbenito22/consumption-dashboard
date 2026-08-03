@@ -56,13 +56,15 @@ export const RepeatedQueryPanel: React.FC<RepeatedQueryPanelProps> = ({
 
   const columns = useMemo(
     () => [
-      { header: t("query.user"), accessor: "actor" },
-      { header: t("query.app"), accessor: "app" },
-      { header: t("query.waste.each"), accessor: "each_fmt" },
-      { header: t("query.waste.repeats"), accessor: "repeats_fmt" },
-      { header: t("query.waste.wasted"), accessor: "wasted_gib_fmt" },
-      { header: t("query.cost"), accessor: "wasted_cost_fmt" },
-      { header: t("query.waste.window"), accessor: "window_fmt" },
+      // Widths sized so emails and app ids stay readable — truncating these to
+      // "diego.corr…" / "dynatrace…." hides exactly what the panel is for.
+      { header: t("query.user"), accessor: "actor", minWidth: 210 },
+      { header: t("query.app"), accessor: "app", minWidth: 170 },
+      { header: t("query.waste.each"), accessor: "each_fmt", minWidth: 110 },
+      { header: t("query.waste.repeats"), accessor: "repeats_fmt", minWidth: 95 },
+      { header: t("query.waste.wasted"), accessor: "wasted_gib_fmt", minWidth: 110 },
+      { header: t("query.cost"), accessor: "wasted_cost_fmt", minWidth: 120 },
+      { header: t("query.waste.window"), accessor: "window_fmt", minWidth: 210 },
     ],
     [t],
   );

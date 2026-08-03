@@ -249,7 +249,7 @@ export const BillingOverview: React.FC<BillingOverviewProps> = () => {
       />
 
       {/* ── Budget summary (annual commitment) — mirrors Account Management ─── */}
-      <BudgetPanel trendTotal={trend.total} />
+      <BudgetPanel trendTotal={trend.total} annualProjection={annualCost} />
 
       <Divider />
 

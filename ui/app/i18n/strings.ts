@@ -32,6 +32,14 @@ export const STRINGS = {
     en: "The annual commitment has been exceeded — additional usage is billed on-demand at rate-card prices (no surcharge).",
     pt: "O commitment anual foi ultrapassado — o uso adicional é cobrado on-demand pelos preços do rate card (sem surcharge).",
   },
+  "weekly.collapse": {
+    en: "Sharp drop — check whether ingestion actually stopped before reading this as a saving.",
+    pt: "Queda acentuada — verifique se a ingestão parou antes de ler isso como economia.",
+  },
+  "budget.scaleSuspect": {
+    en: "Check this value: the annual run-rate is {ratio}× the commitment, which usually means a MONTHLY figure was entered in the annual field. If that is the case, the annual commitment would be {annual} and this budget is not actually exceeded. Correct it under Configure rate card.",
+    pt: "Confira este valor: o run-rate anual é {ratio}× o commitment, o que normalmente indica que um valor MENSAL foi informado no campo anual. Se for o caso, o commitment anual seria {annual} e este budget não está de fato estourado. Corrija em Configure rate card.",
+  },
   "budget.sourceSettings": {
     en: "Commitment entered manually in Configure rate card.",
     pt: "Commitment informado manualmente no Configure rate card.",
