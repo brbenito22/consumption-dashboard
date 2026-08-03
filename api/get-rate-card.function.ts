@@ -250,6 +250,91 @@ async function fetchPerCapabilityCosts(
   return out.sort((a, b) => b.periodTotal - a.periodTotal);
 }
 
+/**
+ * Resolves which subscription to bill against, and reads its annual
+ * commitment. The list call happens even when an id is configured: the record
+ * itself carries the commitment + subscription period, which the id alone
+ * cannot give us.
+ */
+async function resolveSubscription(
+  apiBase: string,
+  accountId: string,
+  token: string,
+  subscriptionId: string | undefined,
+): Promise<{ subId?: string; budget?: OfficialBudget; diag?: string }> {
+  const subs = await getJson(`${apiBase}/sub/v2/accounts/${accountId}/subscriptions`, token);
+  const list = findRows(subs) as Array<Record<string, unknown>>;
+  const chosen = subscriptionId
+    ? list.find((r) => [r.subscriptionUuid, r.uuid, r.id].includes(subscriptionId)) ?? list[0]
+    : list[0];
+  const budget = extractBudget(chosen);
+  const subId = subscriptionId ?? ((chosen?.subscriptionUuid ?? chosen?.uuid ?? chosen?.id) as string | undefined);
+
+  if (!subId) {
+    const keys = subs && typeof subs === "object" ? Object.keys(subs as object).join(",") : typeof subs;
+    return { budget, diag: `no subscription found (subscriptions response: ${list.length} rows; top-level: ${keys})` };
+  }
+  return { subId, budget };
+}
+
+/** First string value among `keys` present on the row, or undefined. */
+function pickDate(row: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const k of keys) {
+    if (typeof row[k] === "string" && row[k]) return row[k] as string;
+  }
+  return undefined;
+}
+
+/**
+ * Sums the cost rows and derives the billing window and currency.
+ *
+ * Field names vary across API revisions, so each value is looked up through a
+ * candidate list rather than a fixed key. `matched` reports how many rows
+ * actually yielded a number — zero means the shape changed and the caller
+ * should surface a diagnostic instead of a confident zero.
+ */
+function aggregateCostRows(rows: Array<Record<string, unknown>>): {
+  total: number;
+  matched: number;
+  currency: string;
+  periodFrom?: string;
+  periodTo?: string;
+} {
+  const valueKeys = ["value", "cost", "totalCost", "amount", "total"];
+  // Cost rows carry the billing window as startTime/endTime (per Cost API v2).
+  const startKeys = ["startTime", "startDate", "start", "from", "periodStart", "date", "day", "billingDate"];
+  const endKeys = ["endTime", "endDate", "end", "to", "periodEnd"];
+
+  let total = 0;
+  let matched = 0;
+  const starts: string[] = [];
+  const ends: string[] = [];
+
+  for (const r of rows) {
+    const v = pickNumber(r, valueKeys);
+    if (v !== undefined) { total += v; matched++; }
+    const s = pickDate(r, startKeys);
+    if (s) starts.push(s);
+    const e = pickDate(r, endKeys);
+    if (e) ends.push(e);
+  }
+
+  const currency =
+    (rows.find((r) => r.currencyCode || r.currency)?.currencyCode as string | undefined) ??
+    (rows.find((r) => r.currency)?.currency as string | undefined) ??
+    "USD";
+
+  starts.sort();
+  ends.sort();
+  return {
+    total,
+    matched,
+    currency,
+    periodFrom: starts[0]?.slice(0, 10),
+    periodTo: (ends[ends.length - 1] ?? starts[starts.length - 1])?.slice(0, 10),
+  };
+}
+
 async function fetchOfficialCost(
   apiBase: string,
   accountId: string,
@@ -258,63 +343,35 @@ async function fetchOfficialCost(
 ): Promise<{ cost?: OfficialCost; budget?: OfficialBudget; capabilityCosts?: OfficialCapabilityCost[]; diag: string }> {
   let budget: OfficialBudget | undefined;
   try {
-    let subId = subscriptionId;
-    // Always list subscriptions: even with a configured id we want the record
-    // itself, which carries the annual commitment + subscription period.
-    {
-      const subs = await getJson(`${apiBase}/sub/v2/accounts/${accountId}/subscriptions`, token);
-      const list = findRows(subs) as Array<Record<string, unknown>>;
-      const chosen = subId
-        ? list.find((r) => [r.subscriptionUuid, r.uuid, r.id].includes(subId)) ?? list[0]
-        : list[0];
-      budget = extractBudget(chosen);
-      subId = subId ?? ((chosen?.subscriptionUuid ?? chosen?.uuid ?? chosen?.id) as string | undefined);
-      if (!subId) {
-        const keys = subs && typeof subs === "object" ? Object.keys(subs as object).join(",") : typeof subs;
-        return { budget, diag: `no subscription found (subscriptions response: ${list.length} rows; top-level: ${keys})` };
-      }
-    }
+    const sub = await resolveSubscription(apiBase, accountId, token, subscriptionId);
+    budget = sub.budget;
+    if (!sub.subId) return { budget, diag: sub.diag ?? "no subscription found" };
 
-    const cost = await getJson(`${apiBase}/sub/v2/accounts/${accountId}/subscriptions/${subId}/cost`, token);
+    const cost = await getJson(`${apiBase}/sub/v2/accounts/${accountId}/subscriptions/${sub.subId}/cost`, token);
     const rows = findRows(cost) as Array<Record<string, unknown>>;
     if (rows.length === 0) {
       const keys = cost && typeof cost === "object" ? Object.keys(cost as object).join(",") : typeof cost;
       return { budget, diag: `cost endpoint returned no rows (top-level keys: ${keys})` };
     }
 
-    const valueKeys = ["value", "cost", "totalCost", "amount", "total"];
-    // Cost rows carry the billing window as startTime/endTime (per Cost API v2).
-    const startKeys = ["startTime", "startDate", "start", "from", "periodStart", "date", "day", "billingDate"];
-    const endKeys = ["endTime", "endDate", "end", "to", "periodEnd"];
-    let total = 0;
-    let matched = 0;
-    const starts: string[] = [];
-    const ends: string[] = [];
-    for (const r of rows) {
-      const v = pickNumber(r, valueKeys);
-      if (v !== undefined) { total += v; matched++; }
-      for (const k of startKeys) { if (typeof r[k] === "string" && r[k]) { starts.push(r[k] as string); break; } }
-      for (const k of endKeys) { if (typeof r[k] === "string" && r[k]) { ends.push(r[k] as string); break; } }
-    }
-    if (matched === 0) {
+    const agg = aggregateCostRows(rows);
+    if (agg.matched === 0) {
       return { budget, diag: `cost rows had no numeric value field (row keys: ${Object.keys(rows[0]).join(",")})` };
     }
-    const currency =
-      (rows.find((r) => r.currencyCode || r.currency)?.currencyCode as string | undefined) ??
-      (rows.find((r) => r.currency)?.currency as string | undefined) ??
-      "USD";
-    starts.sort();
-    ends.sort();
-    const periodFrom = starts[0]?.slice(0, 10);
-    const periodTo = (ends[ends.length - 1] ?? starts[starts.length - 1])?.slice(0, 10);
+
     const capabilityCosts = extractCapabilityCosts(rows);
+    const window = agg.periodFrom ? `${agg.periodFrom} → ${agg.periodTo}` : "no period";
     return {
-      cost: { total, currency, subscriptionId: subId, periodFrom, periodTo },
+      cost: {
+        total: agg.total,
+        currency: agg.currency,
+        subscriptionId: sub.subId,
+        periodFrom: agg.periodFrom,
+        periodTo: agg.periodTo,
+      },
       budget,
       capabilityCosts,
-      diag: periodFrom
-        ? `ok (${matched}/${rows.length} rows, ${periodFrom} → ${periodTo}, ${capabilityCosts.length} capabilities)`
-        : `ok (${matched}/${rows.length} rows, no period, ${capabilityCosts.length} capabilities)`,
+      diag: `ok (${agg.matched}/${rows.length} rows, ${window}, ${capabilityCosts.length} capabilities)`,
     };
   } catch (e) {
     return { budget, diag: e instanceof Error ? e.message : "unknown error" };

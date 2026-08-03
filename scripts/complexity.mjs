@@ -19,8 +19,10 @@
  *   node scripts/complexity.mjs --file=ui/app/pages/BillingOverview.tsx
  *
  * Thresholds: WARN_AT 10 (⚠ refactor candidate) · FAIL_AT 25 (✖ too complex).
- * FAIL_AT is calibrated to the current worst offenders on record — lower it as
- * they get refactored so the gate keeps ratcheting down, never up.
+ * FAIL_AT is a ratchet: it sits just above the worst function currently on
+ * record, so nothing can get worse without failing CI. Lower it whenever a
+ * refactor clears the current ceiling — never raise it to make a build pass.
+ * History: 95 (v1.61) -> 25 (v1.65, worst is now 24).
  *
  * Reading the numbers:
  *   1–5    simple — fine

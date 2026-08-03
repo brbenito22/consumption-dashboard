@@ -105,6 +105,56 @@ const n = (v: unknown): number => {
 
 const GIB = 1073741824;
 
+/** Prices one row against its capability's rate, calibrated to the official cost. */
+type PriceFn = (row: BillingDetailRow, capability: string) => number;
+
+/**
+ * Folds query rows into ranked spenders, keyed by whatever dimension `keyOf`
+ * picks (user, app or dashboard). One implementation for all three axes: they
+ * differ only in the key and, for dashboards, in carrying a viewer count.
+ *
+ * `viewersOf` accumulates an optional extra scalar per key; passing it is what
+ * makes the result a DashboardSpender.
+ */
+function buildSpenders(
+  rows: QueryRow[] | DashboardRow[],
+  keyOf: (r: QueryRow | DashboardRow) => string,
+  priceOf: PriceFn,
+  viewersOf?: (acc: number, r: QueryRow | DashboardRow) => number,
+): QuerySpender[] {
+  interface Acc { cost: number; gib: number; queries: number; maxGib: number; viewers: number; caps: Map<string, number> }
+  const acc = new Map<string, Acc>();
+
+  for (const row of rows) {
+    const capability = String(row.event_type ?? "");
+    const cost = priceOf(row, capability);
+    const key = keyOf(row) || "unknown";
+    const e = acc.get(key) ?? { cost: 0, gib: 0, queries: 0, maxGib: 0, viewers: 0, caps: new Map<string, number>() };
+    e.cost += cost;
+    e.gib += n(row.data_gib);
+    e.queries += n((row as QueryRow).queries);
+    e.maxGib = Math.max(e.maxGib, n((row as QueryRow).max_bytes) / GIB);
+    if (viewersOf) e.viewers = viewersOf(e.viewers, row);
+    if (cost > 0) e.caps.set(capability, (e.caps.get(capability) ?? 0) + cost);
+    acc.set(key, e);
+  }
+
+  return [...acc.entries()]
+    .map(([key, v]) => ({
+      key,
+      cost: v.cost,
+      gib: v.gib,
+      queries: v.queries,
+      maxGib: v.maxGib,
+      avgGib: v.queries > 0 ? v.gib / v.queries : 0,
+      ...(viewersOf ? { viewers: v.viewers } : {}),
+      capabilities: [...v.caps.entries()]
+        .map(([capability, cost]) => ({ capability, cost }))
+        .sort((a, b) => b.cost - a.cost),
+    }))
+    .sort((a, b) => b.cost - a.cost || b.gib - a.gib);
+}
+
 /**
  * Breaks Grail QUERY spend down by who ran it and which app it came from, and
  * flags queries that are being re-executed mechanically.
@@ -140,70 +190,19 @@ export function useQueryCost(): QueryCostState {
       return priceDetailRow(row, rate, range.hours) * calibration.factorFor(capability);
     };
 
-    const build = (keyOf: (r: QueryRow) => string): QuerySpender[] => {
-      const acc = new Map<string, { cost: number; gib: number; queries: number; maxGib: number; caps: Map<string, number> }>();
-      for (const row of rows) {
-        const capability = String(row.event_type ?? "");
-        const cost = priceOf(row, capability);
-        const key = keyOf(row) || "unknown";
-        const e = acc.get(key) ?? { cost: 0, gib: 0, queries: 0, maxGib: 0, caps: new Map<string, number>() };
-        e.cost += cost;
-        e.gib += n(row.data_gib);
-        e.queries += n(row.queries);
-        e.maxGib = Math.max(e.maxGib, n(row.max_bytes) / GIB);
-        if (cost > 0) e.caps.set(capability, (e.caps.get(capability) ?? 0) + cost);
-        acc.set(key, e);
-      }
-      return [...acc.entries()]
-        .map(([key, v]) => ({
-          key,
-          cost: v.cost,
-          gib: v.gib,
-          queries: v.queries,
-          maxGib: v.maxGib,
-          avgGib: v.queries > 0 ? v.gib / v.queries : 0,
-          capabilities: [...v.caps.entries()]
-            .map(([capability, cost]) => ({ capability, cost }))
-            .sort((a, b) => b.cost - a.cost),
-        }))
-        .sort((a, b) => b.cost - a.cost || b.gib - a.gib);
-    };
-
-    const byUser = build((r) => String(r.actor ?? "unknown"));
-    const byApp  = build((r) => String(r.app ?? "unknown"));
+    const byUser = buildSpenders(rows, (r) => String((r as QueryRow).actor ?? "unknown"), priceOf);
+    const byApp  = buildSpenders(rows, (r) => String((r as QueryRow).app ?? "unknown"), priceOf);
 
     // Dashboards come from their own query (the id has to be parsed out of
     // client.source), so they aggregate separately from the user/app rows.
-    const dashAcc = new Map<string, { cost: number; gib: number; queries: number; maxGib: number; viewers: number; caps: Map<string, number> }>();
-    for (const row of ((dashQ.data as DashboardRow[]) ?? [])) {
-      const capability = String(row.event_type ?? "");
-      const cost = priceOf(row, capability);
-      const key = String(row.dashboard_id ?? "");
-      if (!key) continue;
-      const e = dashAcc.get(key) ?? { cost: 0, gib: 0, queries: 0, maxGib: 0, viewers: 0, caps: new Map<string, number>() };
-      e.cost += cost;
-      e.gib += n(row.data_gib);
-      e.queries += n(row.queries);
-      e.maxGib = Math.max(e.maxGib, n(row.max_bytes) / GIB);
+    const dashRows = ((dashQ.data as DashboardRow[]) ?? []).filter((r) => String(r.dashboard_id ?? ""));
+    const byDashboard: DashboardSpender[] = buildSpenders(
+      dashRows,
+      (r) => String((r as DashboardRow).dashboard_id ?? ""),
+      priceOf,
       // max, not sum — the same person can appear under several capabilities.
-      e.viewers = Math.max(e.viewers, n(row.viewers));
-      if (cost > 0) e.caps.set(capability, (e.caps.get(capability) ?? 0) + cost);
-      dashAcc.set(key, e);
-    }
-    const byDashboard: DashboardSpender[] = [...dashAcc.entries()]
-      .map(([key, v]) => ({
-        key,
-        cost: v.cost,
-        gib: v.gib,
-        queries: v.queries,
-        maxGib: v.maxGib,
-        avgGib: v.queries > 0 ? v.gib / v.queries : 0,
-        viewers: v.viewers,
-        capabilities: [...v.caps.entries()]
-          .map(([capability, cost]) => ({ capability, cost }))
-          .sort((a, b) => b.cost - a.cost),
-      }))
-      .sort((a, b) => b.cost - a.cost || b.gib - a.gib);
+      (acc, r) => Math.max(acc, n((r as DashboardRow).viewers)),
+    ) as DashboardSpender[];
 
     // ── Headline totals from the per-capability query (never truncated) ─────
     const totalRows = (totalsQ.data as QueryRow[]) ?? [];
