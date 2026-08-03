@@ -976,7 +976,7 @@ fetch dt.system.events, from:${tr.dqlFrom}, to:${tr.dqlTo}
 | fieldsAdd bytes = coalesce(billed_bytes, 0.0)
 | summarize {
   data_gib   = sum(bytes) / 1073741824.0,
-  queries    = count(),
+  queries    = countDistinctExact(coalesce(query_id, event.id)),
   ai_queries = countIf(ai_generated == true),
   max_bytes  = max(bytes)
 }, by: {
@@ -1003,7 +1003,7 @@ fetch dt.system.events, from:${tr.dqlFrom}, to:${tr.dqlTo}
 | fieldsAdd bytes = coalesce(billed_bytes, 0.0)
 | summarize {
   data_gib   = sum(bytes) / 1073741824.0,
-  queries    = count(),
+  queries    = countDistinctExact(coalesce(query_id, event.id)),
   ai_queries = countIf(ai_generated == true),
   max_bytes  = max(bytes),
   actors     = countDistinctExact(user.email)
@@ -1058,7 +1058,7 @@ fetch dt.system.events, from:${tr.dqlFrom}, to:${tr.dqlTo}
 | filter isNotNull(dashboard_id) and dashboard_id != ""
 | summarize {
   data_gib  = sum(coalesce(billed_bytes, 0.0)) / 1073741824.0,
-  queries   = count(),
+  queries   = countDistinctExact(coalesce(query_id, event.id)),
   viewers   = countDistinctExact(user.email),
   max_bytes = max(coalesce(billed_bytes, 0.0))
 }, by: { dashboard_id, event_type = event.type }
