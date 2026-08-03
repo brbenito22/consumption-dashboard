@@ -45,10 +45,17 @@ const BudgetKpis: React.FC<{
   periodEnd: string | null;
   reachedOn: string | null;
   over: boolean;
-}> = ({ commitment, commitmentSource, officialTotal, usedPct, daysLeft, periodEnd, reachedOn, over }) => {
+  /** Commitment scale looks wrong — soften the alarm, the numbers are suspect. */
+  scaleSuspect: boolean;
+}> = ({ commitment, commitmentSource, officialTotal, usedPct, daysLeft, periodEnd, reachedOn, over, scaleSuspect }) => {
   const { money } = useCurrency();
   const { t } = useLang();
-  const usedVariant = over ? "critical" : usedPct !== null && usedPct >= 80 ? "warning" : "positive";
+  // A red "over budget" derived from a likely typo is a false alarm. Downgrade
+  // to warning until the commitment is confirmed.
+  const alarm = over && !scaleSuspect;
+  const usedVariant = alarm ? "critical"
+    : scaleSuspect || (usedPct !== null && usedPct >= 80) ? "warning"
+    : "positive";
 
   return (
     <Grid gridTemplateColumns="repeat(auto-fit, minmax(190px, 1fr))" gap={12}>
@@ -68,8 +75,8 @@ const BudgetKpis: React.FC<{
       )}
       <KpiCard
         label={reachedOn ? t("budget.reachedOn", { date: reachedOn }) : t("budget.notReached")}
-        value={over ? "⚠" : "✓"}
-        colorVariant={over ? "critical" : "positive"}
+        value={alarm ? "⚠" : scaleSuspect ? "?" : "✓"}
+        colorVariant={alarm ? "critical" : scaleSuspect ? "warning" : "positive"}
       />
     </Grid>
   );
@@ -112,7 +119,7 @@ export const BudgetPanel: React.FC<BudgetPanelProps> = ({ trendTotal, annualProj
   return (
     <Surface
       elevation="flat"
-      color={over ? "critical" : "primary"}
+      color={over && !scaleSuspect ? "critical" : "primary"}
       style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 12 }}
     >
       <Flex justifyContent="space-between" alignItems="baseline" flexWrap="wrap" gap={8}>
@@ -132,13 +139,16 @@ export const BudgetPanel: React.FC<BudgetPanelProps> = ({ trendTotal, annualProj
         periodEnd={budget.periodEnd ?? null}
         reachedOn={commitmentReached}
         over={over}
+        scaleSuspect={scaleSuspect}
       />
       {budgetUsedPct !== null && (
         <div style={{ height: 10, borderRadius: 5, background: "var(--dt-color-border-neutral-subtle)", overflow: "hidden" }}>
           <div style={{
             height: "100%",
             width: `${Math.min(budgetUsedPct, 100)}%`,
-            background: over ? Colors.Border.Critical.Default : budgetUsedPct >= 80 ? Colors.Border.Warning.Default : Colors.Border.Success.Default,
+            background: over && !scaleSuspect ? Colors.Border.Critical.Default
+              : scaleSuspect || budgetUsedPct >= 80 ? Colors.Border.Warning.Default
+              : Colors.Border.Success.Default,
             borderRadius: 5,
           }} />
         </div>

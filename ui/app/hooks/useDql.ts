@@ -185,6 +185,10 @@ export function formatCount(n: number): string {
   if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
   if (n >= 1_000_000)     return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000)         return `${(n / 1_000).toFixed(1)}K`;
+  // Rounding a fractional value to "0" makes a card read "0" next to a real
+  // week-over-week delta ("0 vs 0, -10%"), which looks broken. Counts are
+  // whole numbers so this branch only ever catches GiB-style values.
+  if (n > 0 && n < 1) return n.toFixed(2);
   return String(Math.round(n));
 }
 

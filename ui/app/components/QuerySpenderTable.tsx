@@ -61,9 +61,11 @@ const makeCostCell = (maxCost: number) =>
     const pct = maxCost > 0 ? Math.min((raw / maxCost) * 100, 100) : 0;
     return (
       <div style={{ position: "relative", width: "100%" }}>
+        {/* Border.Primary.Accent, not Background.Field.* — the field tints are
+            near-invisible against the dark row background. */}
         <div style={{
-          position: "absolute", left: 0, top: 0, bottom: 0, width: `${pct}%`,
-          background: Colors.Background.Field.Primary.Default, borderRadius: 3, opacity: 0.55,
+          position: "absolute", left: 0, top: 2, bottom: 2, width: `${pct}%`,
+          background: Colors.Border.Primary.Accent, borderRadius: 3, opacity: 0.32,
         }} />
         <span style={{ position: "relative", fontWeight: 600 }}>{String(value)}</span>
       </div>
@@ -123,8 +125,10 @@ export const QuerySpenderTable: React.FC<QuerySpenderTableProps> = ({
   const columns = useMemo(() => {
     const header = axis === "user" ? t("query.user") : axis === "app" ? t("query.app") : t("query.dashboard");
     const keyCol = axis === "dashboard"
-      ? { header, accessor: "key", cell: makeDashboardCell(names), minWidth: 220 }
-      : { header, accessor: "key", minWidth: 200 };
+      // Dashboard names run long ("Kubernetes Cluster Overview — prod"), so this
+      // column gets the room; truncating it defeats the point of resolving them.
+      ? { header, accessor: "key", cell: makeDashboardCell(names), minWidth: 320 }
+      : { header, accessor: "key", minWidth: 240 };
     return [
       keyCol,
       { header: t("query.cost"), accessor: "cost_fmt", cell: makeCostCell(maxCost), minWidth: 130 },
