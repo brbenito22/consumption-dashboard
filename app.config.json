@@ -3,7 +3,7 @@
   "app": {
     "id": "my.consumption.dashboard",
     "name": "Cost Center",
-    "version": "1.66.0",
+    "version": "1.67.0",
     "description": "Cost Center — consumption, billing and cost across Dynatrace capabilities.",
     "icon": "assets/icon.svg",
     "scopes": [
@@ -46,6 +46,10 @@
       {
         "name": "environment-api:metrics:read",
         "comment": "Read metric series via Environment API"
+      },
+      {
+        "name": "document:documents:read",
+        "comment": "Resolve dashboard IDs to names in the Query Cost tab"
       }
     ]
   },
