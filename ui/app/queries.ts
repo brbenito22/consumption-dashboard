@@ -989,6 +989,51 @@ fetch dt.system.events, from:${tr.dqlFrom}, to:${tr.dqlTo}
 `.trim();
 
 /**
+ * EXACT query totals per capability — the reconciliation basis for the tab.
+ *
+ * queryCostQuery groups by {user, app, capability} and takes the top 500 rows
+ * for ranking; on a busy tenant that combination count exceeds 500 and the
+ * tail is dropped, so summing those rows UNDER-reports the true total. This
+ * query groups by capability alone (a handful of rows, never truncated), so
+ * the headline KPIs stay exact regardless of how deep the ranking is cut.
+ */
+export const queryCostTotalsQuery = (tr: TimeRangeOption) => `
+fetch dt.system.events, from:${tr.dqlFrom}, to:${tr.dqlTo}
+| filter event.kind == "BILLING_USAGE_EVENT" and endsWith(event.type, "- Query")
+| fieldsAdd bytes = coalesce(billed_bytes, 0.0)
+| summarize {
+  data_gib   = sum(bytes) / 1073741824.0,
+  queries    = count(),
+  ai_queries = countIf(ai_generated == true),
+  max_bytes  = max(bytes),
+  actors     = countDistinctExact(user.email)
+}, by: { event_type = event.type }
+| sort data_gib desc
+`.trim();
+
+/**
+ * EXACT repeated-query waste per capability (no top-N cut).
+ *
+ * repeatedQueriesQuery returns only the 25 worst offenders for the table; the
+ * headline "wasted" figure must cover ALL repeat groups, so it is summed here
+ * and collapsed to one row per capability.
+ */
+export const repeatedQueriesTotalQuery = (tr: TimeRangeOption) => `
+fetch dt.system.events, from:${tr.dqlFrom}, to:${tr.dqlTo}
+| filter event.kind == "BILLING_USAGE_EVENT" and endsWith(event.type, "- Query")
+| filter coalesce(billed_bytes, 0.0) > 1073741824.0
+| summarize { repeats = count() }, by: {
+  actor      = coalesce(user.email, "unknown"),
+  app        = coalesce(client.application_context, "unknown"),
+  event_type = event.type,
+  bytes      = billed_bytes
+}
+| filter repeats > 2
+| fieldsAdd wasted = (toDouble(bytes) / 1073741824.0) * (repeats - 1)
+| summarize { data_gib = sum(wasted), groups = count() }, by: { event_type }
+`.trim();
+
+/**
  * Query spend per DASHBOARD. `client.application_context` only says
  * "dynatrace.dashboards"; the dashboard's own id lives in `client.source` as
  * `/ui/dashboard/<uuid>`.

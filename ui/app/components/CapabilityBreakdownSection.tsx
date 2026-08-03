@@ -33,6 +33,89 @@ function ProgressBar({ pct, color }: { pct: number; color: string }) {
   );
 }
 
+/** Resolved display numbers for one capability row (see `resolve` below). */
+interface ResolvedRow {
+  official: { periodTotal: number; last30: number | null; prev30: number | null } | undefined;
+  cost: number;
+  c30: number | null;
+  d: { pct: number | null; isNew: boolean };
+  share: number;
+}
+
+/** Color for a delta badge: up = warning, down = success, flat = subdued. */
+function deltaColor(d: { pct: number | null; isNew: boolean }): string {
+  if (d.isNew || (d.pct !== null && d.pct > 0.5)) return Colors.Text.Warning.Default;
+  if (d.pct !== null && d.pct < -0.5) return Colors.Text.Success.Default;
+  return Colors.Text.Neutral.Subdued;
+}
+
+/**
+ * One capability cost card. Clickable (opening the drill-down sheet) only when
+ * the capability actually has billable cost — either a priced Grail quantity or
+ * a non-zero official figure.
+ */
+const CapabilityCard: React.FC<{
+  row: CapabilityCost;
+  color: string;
+  resolved: ResolvedRow;
+  costCell: string;
+  subCell: string;
+  onSelect: (capability: string) => void;
+}> = ({ row, color, resolved, costCell, subCell, onSelect }) => {
+  const { money } = useCurrency();
+  const { t, lang } = useLang();
+  const { official, cost, c30, d, share } = resolved;
+
+  const clickable = (!row.unmatched && row.quantity > 0) || (official !== undefined && official.periodTotal > 0);
+  const delta = clickable ? d : { pct: null, isNew: false };
+  const priced = !row.unmatched && row.quantity > 0;
+
+  return (
+    <div
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onClick={clickable ? () => onSelect(row.capability) : undefined}
+      onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") onSelect(row.capability); } : undefined}
+      style={{ cursor: clickable ? "pointer" : "default", display: "flex" }}
+    >
+      <Surface
+        elevation="raised"
+        style={{ display: "flex", flexDirection: "column", gap: 8, padding: "14px 16px", position: "relative", overflow: "hidden", flex: 1 }}
+      >
+        <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 4, backgroundColor: row.unmatched ? Colors.Text.Neutral.Subdued : color }} />
+        <Text textStyle="small-emphasized" style={{ color: Colors.Text.Neutral.Subdued, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          {row.capability}
+        </Text>
+        <Flex justifyContent="space-between" alignItems="baseline" gap={8}>
+          <Heading level={3} style={{ margin: 0 }}>
+            {official ? money(cost) : costCell}
+          </Heading>
+          {(delta.pct !== null || delta.isNew) && (
+            <Text textStyle="small-emphasized" title={t("billing.delta30")} style={{ color: deltaColor(delta) }}>
+              {delta.isNew ? t("delta.new") : fmtDelta(delta.pct)}
+            </Text>
+          )}
+        </Flex>
+        {clickable && c30 !== null && (
+          <Text textStyle="small" style={{ color: Colors.Text.Neutral.Default }}>
+            {t("billing.last30")}: <strong>{money(c30)}</strong>
+          </Text>
+        )}
+        <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued }}>{subCell}</Text>
+        {priced && (
+          <>
+            <Text textStyle="small" style={{ color: Colors.Text.Neutral.Default, lineHeight: 1.4 }}>
+              {descriptionFor(row.capability, lang)}
+            </Text>
+            <ProgressBar pct={share} color={color} />
+            <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued }}>{fmtNum(share, 1)}% of total cost</Text>
+          </>
+        )}
+      </Surface>
+    </div>
+  );
+};
+
 /**
  * "Cost by Capability" (Billing tab): cards ⇄ table toggle, CSV export and the
  * per-capability delta badges. Prefers the OFFICIAL per-capability cost from
@@ -134,63 +217,17 @@ export const CapabilityBreakdownSection: React.FC<CapabilityBreakdownSectionProp
       )}
       {capView === "cards" && (
         <Grid gridTemplateColumns="repeat(auto-fit, minmax(240px, 1fr))" gap={12}>
-          {(loading ? [] : breakdown.rows).map((row, idx) => {
-            const color = chartColor(idx);
-            const { official, cost: dispCost, c30, d, share } = resolve(row);
-            const clickable = (!row.unmatched && row.quantity > 0) || (official !== undefined && official.periodTotal > 0);
-            const capDelta = clickable ? d : { pct: null, isNew: false };
-            return (
-              <div
-                key={row.capability}
-                role={clickable ? "button" : undefined}
-                tabIndex={clickable ? 0 : undefined}
-                onClick={clickable ? () => onSelect(row.capability) : undefined}
-                onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") onSelect(row.capability); } : undefined}
-                style={{ cursor: clickable ? "pointer" : "default", display: "flex" }}
-              >
-                <Surface
-                  elevation="raised"
-                  style={{ display: "flex", flexDirection: "column", gap: 8, padding: "14px 16px", position: "relative", overflow: "hidden", flex: 1 }}
-                >
-                  <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 4, backgroundColor: row.unmatched ? Colors.Text.Neutral.Subdued : color }} />
-                  <Text textStyle="small-emphasized" style={{ color: Colors.Text.Neutral.Subdued, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                    {row.capability}
-                  </Text>
-                  <Flex justifyContent="space-between" alignItems="baseline" gap={8}>
-                    <Heading level={3} style={{ margin: 0 }}>
-                      {official ? money(dispCost) : costCell(row)}
-                    </Heading>
-                    {(capDelta.pct !== null || capDelta.isNew) && (
-                      <Text
-                        textStyle="small-emphasized"
-                        title={t("billing.delta30")}
-                        style={{ color: capDelta.isNew || (capDelta.pct !== null && capDelta.pct > 0.5) ? Colors.Text.Warning.Default : capDelta.pct !== null && capDelta.pct < -0.5 ? Colors.Text.Success.Default : Colors.Text.Neutral.Subdued }}
-                      >
-                        {capDelta.isNew ? t("delta.new") : fmtDelta(capDelta.pct)}
-                      </Text>
-                    )}
-                  </Flex>
-                  {clickable && c30 !== null && (
-                    <Text textStyle="small" style={{ color: Colors.Text.Neutral.Default }}>
-                      {t("billing.last30")}: <strong>{money(c30)}</strong>
-                    </Text>
-                  )}
-                  <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued }}>
-                    {subCell(row)}
-                  </Text>
-                  {!row.unmatched && row.quantity > 0 && (
-                    <Text textStyle="small" style={{ color: Colors.Text.Neutral.Default, lineHeight: 1.4 }}>
-                      {descriptionFor(row.capability, lang)}
-                    </Text>
-                  )}
-                  {!row.unmatched && row.quantity > 0 && <ProgressBar pct={share} color={color} />}
-                  {!row.unmatched && row.quantity > 0 && (
-                    <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued }}>{fmtNum(share, 1)}% of total cost</Text>
-                  )}
-                </Surface>
-              </div>
-            );
-          })}
+          {(loading ? [] : breakdown.rows).map((row, idx) => (
+            <CapabilityCard
+              key={row.capability}
+              row={row}
+              color={chartColor(idx)}
+              resolved={resolve(row)}
+              costCell={costCell(row)}
+              subCell={subCell(row)}
+              onSelect={onSelect}
+            />
+          ))}
           {loading && <Text>Loading…</Text>}
         </Grid>
       )}

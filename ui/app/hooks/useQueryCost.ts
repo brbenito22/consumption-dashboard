@@ -4,7 +4,13 @@ import { useRateCard } from "./useRateCard";
 import { useBillingPeriod } from "./useBillingPeriod";
 import { useCostCalibration } from "./useCostCalibration";
 import { priceDetailRow, type BillingDetailRow } from "../utils/costEngine";
-import { queryCostQuery, queryCostByDashboardQuery, repeatedQueriesQuery } from "../queries";
+import {
+  queryCostQuery,
+  queryCostByDashboardQuery,
+  repeatedQueriesQuery,
+  queryCostTotalsQuery,
+  repeatedQueriesTotalQuery,
+} from "../queries";
 import { normalizeCapabilityName } from "../constants/rateCard";
 
 /** One spender row — a user, or an app, depending on the axis. */
@@ -52,10 +58,19 @@ export interface QueryCostState {
   byUser: QuerySpender[];
   byApp: QuerySpender[];
   byDashboard: DashboardSpender[];
+  /** Top offenders only (top 25) — `wastedCost`/`wastedGib` cover ALL groups. */
   repeated: RepeatedQuery[];
   /** Cost of repeats beyond the first execution — the recoverable slice. */
   wastedCost: number;
   wastedGib: number;
+  /**
+   * Official Subscription-API cost for the "- Query" capabilities, when the
+   * account exposes per-capability figures. Lets the tab prove its numbers
+   * reconcile with Account Management instead of asking to be trusted.
+   */
+  officialQueryCost: number | null;
+  /** (estimate − official) ÷ official, in %. Null when official is missing. */
+  reconPct: number | null;
 }
 
 interface QueryRow extends BillingDetailRow {
@@ -110,6 +125,10 @@ export function useQueryCost(): QueryCostState {
   const spendQ  = useDql<QueryRow>(useMemo(() => queryCostQuery(range), [range]));
   const dashQ   = useDql<DashboardRow>(useMemo(() => queryCostByDashboardQuery(range), [range]));
   const repeatQ = useDql<RepeatRow>(useMemo(() => repeatedQueriesQuery(range), [range]));
+  // Exact totals — see queryCostTotalsQuery: the ranking queries are top-N and
+  // would under-report the headline figures on a busy tenant.
+  const totalsQ      = useDql<QueryRow>(useMemo(() => queryCostTotalsQuery(range), [range]));
+  const wasteTotalQ  = useDql<BillingDetailRow>(useMemo(() => repeatedQueriesTotalQuery(range), [range]));
 
   return useMemo<QueryCostState>(() => {
     const rows = (spendQ.data as QueryRow[]) ?? [];
@@ -186,11 +205,23 @@ export function useQueryCost(): QueryCostState {
       }))
       .sort((a, b) => b.cost - a.cost || b.gib - a.gib);
 
-    const totalCost    = byUser.reduce((s, u) => s + u.cost, 0);
-    const totalGib     = byUser.reduce((s, u) => s + u.gib, 0);
-    const totalQueries = rows.reduce((s, r) => s + n(r.queries), 0);
-    const aiQueries    = rows.reduce((s, r) => s + n(r.ai_queries), 0);
-    const maxGib       = rows.reduce((m, r) => Math.max(m, n(r.max_bytes) / GIB), 0);
+    // ── Headline totals from the per-capability query (never truncated) ─────
+    const totalRows = (totalsQ.data as QueryRow[]) ?? [];
+    const totalCost    = totalRows.reduce((s, r) => s + priceOf(r, String(r.event_type ?? "")), 0);
+    const totalGib     = totalRows.reduce((s, r) => s + n(r.data_gib), 0);
+    const totalQueries = totalRows.reduce((s, r) => s + n(r.queries), 0);
+    const aiQueries    = totalRows.reduce((s, r) => s + n(r.ai_queries), 0);
+    const maxGib       = totalRows.reduce((m, r) => Math.max(m, n(r.max_bytes) / GIB), 0);
+
+    // Official cost for the same "- Query" capabilities, when exposed.
+    let officialQueryCost: number | null = null;
+    for (const r of totalRows) {
+      const official = rateCard.officialByCap.get(normalizeCapabilityName(String(r.event_type ?? "")));
+      if (official) officialQueryCost = (officialQueryCost ?? 0) + official.periodTotal;
+    }
+    const reconPct = officialQueryCost !== null && officialQueryCost > 0
+      ? ((totalCost - officialQueryCost) / officialQueryCost) * 100
+      : null;
 
     const repeated: RepeatedQuery[] = ((repeatQ.data as RepeatRow[]) ?? []).map((r) => {
       const capability = String(r.event_type ?? "");
@@ -210,9 +241,15 @@ export function useQueryCost(): QueryCostState {
       };
     });
 
+    // Waste totals cover EVERY repeat group, not just the 25 in the table.
+    const wasteRows = (wasteTotalQ.data as BillingDetailRow[]) ?? [];
+    const wastedGib = wasteRows.reduce((s, r) => s + n(r.data_gib), 0);
+    const wastedCost = wasteRows.reduce((s, r) => s + priceOf(r, String(r.event_type ?? "")), 0);
+
     return {
-      isLoading: rateCard.isLoading || calibration.isLoading || spendQ.isLoading || dashQ.isLoading || repeatQ.isLoading,
-      error: spendQ.error ?? dashQ.error ?? repeatQ.error,
+      isLoading: rateCard.isLoading || calibration.isLoading || spendQ.isLoading
+        || dashQ.isLoading || repeatQ.isLoading || totalsQ.isLoading || wasteTotalQ.isLoading,
+      error: spendQ.error ?? dashQ.error ?? repeatQ.error ?? totalsQ.error ?? wasteTotalQ.error,
       totalCost,
       totalGib,
       totalQueries,
@@ -222,13 +259,17 @@ export function useQueryCost(): QueryCostState {
       byApp,
       byDashboard,
       repeated,
-      wastedCost: repeated.reduce((s, r) => s + r.wastedCost, 0),
-      wastedGib: repeated.reduce((s, r) => s + r.wastedGib, 0),
+      wastedCost,
+      wastedGib,
+      officialQueryCost,
+      reconPct,
     };
   }, [
     spendQ.data, spendQ.isLoading, spendQ.error,
     dashQ.data, dashQ.isLoading, dashQ.error,
     repeatQ.data, repeatQ.isLoading, repeatQ.error,
-    rateCard.ratesByName, rateCard.isLoading, calibration, range.hours,
+    totalsQ.data, totalsQ.isLoading, totalsQ.error,
+    wasteTotalQ.data, wasteTotalQ.isLoading, wasteTotalQ.error,
+    rateCard.ratesByName, rateCard.officialByCap, rateCard.isLoading, calibration, range.hours,
   ]);
 }

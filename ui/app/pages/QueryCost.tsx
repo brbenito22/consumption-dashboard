@@ -127,9 +127,24 @@ export const QueryCost: React.FC = () => {
             <KpiCard
               label={t("query.total")}
               value={q.isLoading ? "…" : money(q.totalCost)}
+              subLabel={
+                q.reconPct === null
+                  ? undefined
+                  : Math.abs(q.reconPct) < 1
+                    ? `✓ ${t("query.recon.match")}`
+                    : `${q.reconPct > 0 ? "+" : ""}${fmtNum(q.reconPct)}% ${t("query.recon.off")}`
+              }
               isLoading={q.isLoading}
               error={q.error}
             />
+            {q.officialQueryCost !== null && (
+              <KpiCard
+                label={t("query.official")}
+                value={money(q.officialQueryCost)}
+                subLabel="Subscription API"
+                colorVariant="positive"
+              />
+            )}
             <KpiCard label={t("query.scanned")} value={q.isLoading ? "…" : fmtGib(q.totalGib)} isLoading={q.isLoading} />
             <KpiCard label={t("query.count")} value={q.isLoading ? "…" : fmtInt(q.totalQueries)} isLoading={q.isLoading} />
             <KpiCard
@@ -176,6 +191,9 @@ export const QueryCost: React.FC = () => {
                 {t("query.waste.body")}
               </Text>
               <DataTable data={wasteRows} columns={wasteColumns} sortable resizable />
+              <Text textStyle="small" style={{ color: Colors.Text.Neutral.Subdued }}>
+                {t("query.waste.topNote")}
+              </Text>
               <Text textStyle="small" style={{ color: Colors.Text.Neutral.Default }}>
                 {t("query.waste.fix")}
               </Text>

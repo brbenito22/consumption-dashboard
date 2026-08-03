@@ -186,6 +186,13 @@ export const STRINGS = {
   "query.waste.wasted": { en: "Wasted", pt: "Desperdiçado" },
   "query.waste.window": { en: "Window", pt: "Janela" },
   "query.waste.none": { en: "No mechanically repeated queries detected in this period.", pt: "Nenhuma query repetida mecanicamente detectada neste período." },
+  "query.waste.topNote": {
+    en: "The table lists the 25 worst offenders; the total above covers every repeat group in the period.",
+    pt: "A tabela lista os 25 piores ofensores; o total acima cobre todos os grupos de repetição do período.",
+  },
+  "query.official": { en: "Official (Account Mgmt)", pt: "Oficial (Account Mgmt)" },
+  "query.recon.match": { en: "matches Account Management", pt: "bate com o Account Management" },
+  "query.recon.off": { en: "vs official", pt: "vs oficial" },
   "query.empty": { en: "No query billing events in this period.", pt: "Nenhum evento de billing de query neste período." },
   "query.privacy": {
     en: "Attribution comes from the billing usage events themselves and is visible to anyone with billing access — treat it as a cost signal for fixing queries, not as individual performance monitoring.",
