@@ -19,29 +19,44 @@ import { documentsClient } from "@dynatrace-sdk/client-document";
 
 let namesPromise: Promise<Map<string, string>> | null = null;
 
+/** Lists every dashboard the caller can see, following pagination. */
+async function listAll(adminAccess: boolean): Promise<Map<string, string>> {
+  const byId = new Map<string, string>();
+  let pageKey: string | undefined;
+  do {
+    const res = await documentsClient.listDocuments({
+      filter: 'type == "dashboard"',
+      pageSize: 500,
+      ...(adminAccess ? { adminAccess: true } : {}),
+      ...(pageKey ? { pageKey } : {}),
+    });
+    for (const d of res.documents ?? []) {
+      if (d.id && d.name) byId.set(d.id, d.name);
+    }
+    pageKey = res.nextPageKey;
+  } while (pageKey);
+  return byId;
+}
+
 function loadDashboardNamesOnce(): Promise<Map<string, string>> {
   if (namesPromise) return namesPromise;
   namesPromise = (async () => {
-    const byId = new Map<string, string>();
+    // Without adminAccess the API returns only documents shared with the
+    // CALLER — and the priciest dashboards usually belong to someone else, so
+    // exactly the rows that matter would stay unresolved. Try the wider read
+    // first and fall back when the environment denies it.
     try {
-      // Paginate defensively — a large tenant can hold hundreds of dashboards.
-      let pageKey: string | undefined;
-      do {
-        const res = await documentsClient.listDocuments({
-          filter: 'type == "dashboard"',
-          pageSize: 500,
-          ...(pageKey ? { pageKey } : {}),
-        });
-        for (const d of res.documents ?? []) {
-          if (d.id && d.name) byId.set(d.id, d.name);
-        }
-        pageKey = res.nextPageKey;
-      } while (pageKey);
+      return await listAll(true);
+    } catch {
+      // Not permitted (or unsupported) — fall through to the personal scope.
+    }
+    try {
+      return await listAll(false);
     } catch {
       // Missing document:documents:read, or the API is unavailable — the tab
       // degrades to ids rather than breaking.
+      return new Map<string, string>();
     }
-    return byId;
   })();
   return namesPromise;
 }

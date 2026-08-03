@@ -51,7 +51,9 @@ function nextWeekEstimate(current: number, prev: number): number {
   const rate = (current - prev) / prev;
   // Cap growth rate at 200% to avoid unrealistic projections for new services
   const cappedRate = Math.min(Math.max(rate, -0.99), 2.0);
-  return Math.round(current * (1 + cappedRate));
+  // No rounding here — formatCount decides the precision. Rounding a 0.40 GiB
+  // projection to "0" next to a 0.44 GiB current value reads as broken.
+  return current * (1 + cappedRate);
 }
 
 const MiniBox: React.FC<{ label: string; value: string; emphasis?: boolean }> = ({ label, value, emphasis }) => (
