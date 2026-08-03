@@ -446,8 +446,8 @@ export const STRINGS = {
     pt: "Não foi possível carregar as entidades deste serviço.",
   },
   "cloud.sheet.noteHostBacked": {
-    en: "Hosts backed by OneAgent (EC2 / Azure VM / GCE). Their per-host billing (Full-Stack GiB-hours or Infrastructure host-hours × rate card) is already attributed on the Infrastructure & K8s tab — this drill-down deliberately omits a cost column to avoid double counting.",
-    pt: "Hosts com OneAgent (EC2 / Azure VM / GCE). O billing por host (Full-Stack GiB-horas ou Infrastructure host-horas × rate card) já está atribuído na aba Infrastructure & K8s — esta drill-down omite a coluna de custo de propósito para não duplicar contagem.",
+    en: "Hosts backed by OneAgent (EC2 / Azure VM / GCE), priced by their per-host billing (Full-Stack GiB-hours or Infrastructure host-hours × rate card). This is the SAME cost already attributed on the Infrastructure & K8s tab, shown here per cloud service — it is not an additional charge, so do not add the two together.",
+    pt: "Hosts com OneAgent (EC2 / Azure VM / GCE), precificados pelo billing por host (Full-Stack GiB-horas ou Infrastructure host-horas × rate card). Este é o MESMO custo já atribuído na aba Infrastructure & K8s, exibido aqui por serviço de cloud — não é uma cobrança adicional, portanto não some os dois.",
   },
   "cloud.sheet.noteManaged": {
     en: "Managed service monitored via the cloud provider integration (CloudWatch / Azure Monitor / Google Cloud). There is no per-service billing SKU: metric consumption is billed as “Metrics - Ingest & Process” aggregate — see the Cloud metrics section above for the total.",
