@@ -10,8 +10,9 @@ import { useCurrency } from "../context/CurrencyContext";
 import { useLang } from "../context/LanguageContext";
 import { chartColor } from "../constants/palette";
 
-const fmtNum = (v: number, d = 1) =>
-  !isFinite(v) ? "—" : v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+import { fmtNum as fmtNumShared } from "../utils/format";
+// This tab's percentages read best with 1 decimal.
+const fmtNum = (v: number, d = 1) => fmtNumShared(v, d);
 
 /**
  * One team tile: name header box, total cost, and the capability breakdown

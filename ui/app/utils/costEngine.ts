@@ -99,6 +99,22 @@ export function priceDetailRow(row: BillingDetailRow, rate: CapabilityRate, wind
 }
 
 /**
+ * Delta vs a previous window, with a "new" floor: a percentage against a
+ * period with < 1 unit of cost is noise (+9,820,264%), so those report
+ * isNew instead of a percentage. Pure — shared by Billing and the
+ * capability panels so every tab classifies deltas identically.
+ */
+export function deltaOrNew(
+  cur: number | undefined,
+  prev: number | undefined,
+): { pct: number | null; isNew: boolean } {
+  const c = cur ?? 0;
+  const p = prev ?? 0;
+  if (p <= 1) return { pct: null, isNew: c > 1 };
+  return { pct: ((c - p) / p) * 100, isNew: false };
+}
+
+/**
  * Cross-references actual consumption (billing usage events) with the
  * environment rate card to produce an end-to-end cost breakdown.
  */

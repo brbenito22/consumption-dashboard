@@ -11,16 +11,9 @@ import { useCurrency } from "../context/CurrencyContext";
 import { useLang } from "../context/LanguageContext";
 import { dashboardUrl } from "../utils/settingsLink";
 
-const fmtNum = (v: number, d = 1) =>
-  !isFinite(v) ? "—" : v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
-
-const fmtGib = (v: number) =>
-  !isFinite(v) ? "—"
-    : v >= 1024 ? `${fmtNum(v / 1024, 2)} TiB`
-    : v >= 1 ? `${fmtNum(v, 1)} GiB`
-    : `${fmtNum(v * 1024, 0)} MiB`;
-
-const fmtInt = (v: number) => (!isFinite(v) ? "—" : Math.round(v).toLocaleString("en-US"));
+import { fmtNum as fmtNumShared, fmtGib, fmtInt } from "../utils/format";
+// This tab's percentages read best with 1 decimal.
+const fmtNum = (v: number, d = 1) => fmtNumShared(v, d);
 
 /** "16/07 21:31 → 17/07 19:43" — compact enough for a table cell. */
 const fmtWindow = (from: string, to: string) => {

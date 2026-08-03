@@ -15,6 +15,7 @@ import {
   type BillingTrendRow,
 } from "../utils/costEngine";
 import { billingDetailByTypeQuery, billingCostTrendQuery, billingDetailByTypePrevQuery } from "../queries";
+import { fmtDelta } from "../utils/format";
 import { descriptionFor } from "../constants/capabilityInfo";
 import { normalizeCapabilityName } from "../constants/rateCard";
 import { chartColor } from "../constants/palette";
@@ -33,12 +34,6 @@ interface CapabilityCostPanelProps {
   /** Max cards shown, by cost desc (default 8). */
   limit?: number;
 }
-
-const fmtDelta = (pct: number | null): string => {
-  if (pct === null || !isFinite(pct)) return "—";
-  const arrow = pct > 0.5 ? "▲" : pct < -0.5 ? "▼" : "＝";
-  return `${arrow} ${pct > 0 ? "+" : ""}${pct.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
-};
 
 /**
  * "Where the money goes" panel — drops into any tab. Shows the tab-relevant

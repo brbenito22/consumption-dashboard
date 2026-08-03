@@ -33,6 +33,7 @@ import { useCapabilityCosts } from "../hooks/useCapabilityCosts";
 import { useCurrency } from "../context/CurrencyContext";
 import { useLang } from "../context/LanguageContext";
 import { kpiInfo } from "../i18n/kpiInfo";
+import { fmtGib } from "../utils/format";
 import type { TimeRangeOption } from "../types";
 
 interface ObservabilityProps {
@@ -40,9 +41,6 @@ interface ObservabilityProps {
 }
 
 const consumptionIcon = <MeterbarIcon style={{ width: 16, height: 16 }} />;
-
-const fmtGib = (v: number) =>
-  v >= 1024 ? `${(v / 1024).toFixed(2)} TiB` : v >= 1 ? `${v.toFixed(2)} GiB` : `${(v * 1024).toFixed(1)} MiB`;
 
 const toRows = (data: Record<string, unknown>[] | null): ContributorRow[] =>
   (data ?? []).map((r) => ({ name: String(r.name ?? "(unspecified)"), value: Number(r.value ?? 0) }));

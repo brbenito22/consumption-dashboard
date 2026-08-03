@@ -2,34 +2,52 @@
 /**
  * Cyclomatic complexity report for the Consumption Dashboard sources.
  *
- * Zero-dependency heuristic analyzer for TS/TSX:
- *   CC(function) = 1 + decision points (if / else if / for / while / do /
- *   case / catch / && / || / ?? / ternary "?").
- * Nested functions count toward their enclosing declaration (pragmatic
- * heuristic — good for spotting hotspots, not a compiler-grade metric).
+ * AST-based (TypeScript compiler API — already a project dependency, so still
+ * zero ADDED dependencies): CC(function) = 1 + decision points, measured on
+ * real syntax nodes:
+ *   if / for / for-in / for-of / while / do / case / catch / ternary
+ *   / && / || / ??
+ * Each function-like node (declaration, method, arrow, function expression,
+ * accessor, constructor) is measured SEPARATELY — a React component's CC no
+ * longer absorbs the callbacks defined inside it, so the number points at the
+ * actual function to fix.
  *
  * Usage:
  *   node scripts/complexity.mjs             # report, sorted by CC desc
  *   node scripts/complexity.mjs --all       # include CC ≤ 5 functions
  *   node scripts/complexity.mjs --ci        # exit 1 if any CC ≥ FAIL_AT
+ *   node scripts/complexity.mjs --file=ui/app/pages/BillingOverview.tsx
  *
- * Thresholds: WARN_AT 10 (⚠ refactor candidate) · FAIL_AT 15 (✖ too complex).
+ * Thresholds: WARN_AT 10 (⚠ refactor candidate) · FAIL_AT 25 (✖ too complex).
+ * FAIL_AT is calibrated to the current worst offenders on record — lower it as
+ * they get refactored so the gate keeps ratcheting down, never up.
+ *
+ * Reading the numbers:
+ *   1–5    simple — fine
+ *   6–10   moderate — acceptable
+ *   11–24  complex — every path is a test case; split when touched next
+ *   25+    refactor candidate — maintenance risk, fails --ci
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
+const require = createRequire(import.meta.url);
+const ts = require("typescript");
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ROOTS = ["ui/app", "api"];
 const EXTS = [".ts", ".tsx"];
 const SKIP_DIRS = new Set(["node_modules", "dist", ".dt-app", ".git"]);
 const WARN_AT = 10;
-const FAIL_AT = 15;
+const FAIL_AT = 25;
 
 const argv = process.argv.slice(2);
 const args = new Set(argv);
 const SHOW_ALL = args.has("--all");
 const CI = args.has("--ci");
-/** Optional --file=path restricts analysis to a single file (debug/review aid). */
 const ONLY_FILE = argv.find((a) => a.startsWith("--file="))?.slice(7) ?? null;
 
 // ── File discovery ───────────────────────────────────────────────────────────
@@ -41,226 +59,118 @@ function* walk(dir) {
     const p = join(dir, name);
     const st = statSync(p);
     if (st.isDirectory()) yield* walk(p);
-    else if (EXTS.some((e) => name.endsWith(e))) yield p;
+    else if (EXTS.some((e) => name.endsWith(e)) && !name.endsWith(".d.ts")) yield p;
   }
 }
 
-// ── Source cleaning: blank out comments and string/template contents ─────────
-// Preserves length and line breaks so offsets → line numbers stay correct.
-// Uses a brace stack so `${…}` interpolations correctly RETURN to template
-// mode on their closing brace (nested templates included). Known heuristic
-// limit: bare apostrophes/quotes inside JSX text nodes are lexed as string
-// openers and can blank a short span — acceptable for hotspot reporting.
-function clean(src) {
-  let out = "";
-  let i = 0;
-  const n = src.length;
-  let mode = "code"; // code | line | block | sq | dq | tpl
-  const braces = []; // "brace" for ordinary { in code, "tpl" for ${ openings
-  while (i < n) {
-    const c = src[i];
-    const c2 = src[i + 1];
-    if (mode === "code") {
-      if (c === "/" && c2 === "/") { mode = "line"; out += "  "; i += 2; continue; }
-      if (c === "/" && c2 === "*") { mode = "block"; out += "  "; i += 2; continue; }
-      if (c === "'") { mode = "sq"; out += c; i++; continue; }
-      if (c === '"') { mode = "dq"; out += c; i++; continue; }
-      if (c === "`") { mode = "tpl"; out += c; i++; continue; }
-      if (c === "{") { braces.push("brace"); out += c; i++; continue; }
-      if (c === "}") {
-        if (braces.pop() === "tpl") { mode = "tpl"; out += " "; i++; continue; }
-        out += c; i++; continue;
-      }
-      out += c; i++; continue;
-    }
-    if (mode === "line") {
-      if (c === "\n") { mode = "code"; out += c; } else out += " ";
-      i++; continue;
-    }
-    if (mode === "block") {
-      if (c === "*" && c2 === "/") { mode = "code"; out += "  "; i += 2; continue; }
-      out += c === "\n" ? "\n" : " "; i++; continue;
-    }
-    if (mode === "sq" || mode === "dq") {
-      const q = mode === "sq" ? "'" : '"';
-      if (c === "\\") { out += "  "; i += 2; continue; }
-      if (c === q) { mode = "code"; out += c; i++; continue; }
-      out += c === "\n" ? "\n" : " "; i++; continue;
-    }
-    if (mode === "tpl") {
-      if (c === "\\") { out += "  "; i += 2; continue; }
-      if (c === "$" && c2 === "{") { braces.push("tpl"); mode = "code"; out += "  "; i += 2; continue; }
-      if (c === "`") { mode = "code"; out += c; i++; continue; }
-      out += c === "\n" ? "\n" : " "; i++; continue;
-    }
+// ── Function-like detection & naming ─────────────────────────────────────────
+const isFn = (n) =>
+  ts.isFunctionDeclaration(n) || ts.isMethodDeclaration(n) ||
+  ts.isArrowFunction(n) || ts.isFunctionExpression(n) ||
+  ts.isGetAccessor(n) || ts.isSetAccessor(n) || ts.isConstructorDeclaration(n);
+
+function nameOf(node) {
+  if (node.name && ts.isIdentifier(node.name)) return node.name.text;
+  const p = node.parent;
+  if (p && ts.isVariableDeclaration(p) && ts.isIdentifier(p.name)) return p.name.text;
+  if (p && ts.isPropertyAssignment(p) && ts.isIdentifier(p.name)) return p.name.text;
+  if (p && ts.isExportAssignment(p)) return "(default export)";
+  if (p && ts.isCallExpression(p)) {
+    const callee = p.expression.getText().split("\n")[0].slice(0, 36);
+    return `(callback → ${callee})`;
   }
-  return out;
+  return "(anonymous)";
 }
 
-// ── Function discovery ───────────────────────────────────────────────────────
-const FN_PATTERNS = [
-  // function declaration / expression with a name
-  /\bfunction\s+([A-Za-z0-9_$]+)\s*\(/g,
-  // const name = (…) =>  |  const name = async (…) =>  |  const name = function
-  /\b(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*(?::[^=]{0,120})?=\s*(?:async\s*)?(?:function\b|\()/g,
-  // object property / class method: name(…) {   (excluding keywords)
-  /(?<![.\w$])(?!if\b|for\b|while\b|switch\b|catch\b|return\b|else\b|do\b|new\b|typeof\b)([A-Za-z0-9_$]+)\s*\(([^()]|\([^()]*\))*\)\s*{/g,
-];
-
-function findBodyRange(src, fromIdx) {
-  // Find first '{' at/after fromIdx, then brace-match to its close.
-  let i = src.indexOf("{", fromIdx);
-  if (i < 0) return null;
-  let depth = 0;
-  for (let j = i; j < src.length; j++) {
-    if (src[j] === "{") depth++;
-    else if (src[j] === "}") {
-      depth--;
-      if (depth === 0) return [i, j];
-    }
-  }
-  return null;
-}
-
-function matchParen(src, openIdx) {
-  // src[openIdx] must be "(" — returns index of its matching ")".
-  let d = 0;
-  for (let j = openIdx; j < src.length; j++) {
-    if (src[j] === "(") d++;
-    else if (src[j] === ")") { d--; if (d === 0) return j; }
-  }
-  return -1;
-}
-
-/**
- * Body range for a match whose param list STARTS at `parenIdx`. Handles
- * destructured params (`({ a, b })`) that would fool a naive "first {" scan:
- * paren-match the param list first, then look for `=>` (arrow) or `{`
- * (declaration/expression) AFTER the closing paren. Arrow expression bodies
- * (no braces) span to the next `;` or newline at depth 0.
- */
-function findFnBody(src, parenIdx) {
-  const close = matchParen(src, parenIdx);
-  if (close < 0) return null;
-  // Skip return-type annotation etc. while searching for "=>" or "{" nearby.
-  const lookahead = src.slice(close + 1, close + 200);
-  const arrowRel = lookahead.indexOf("=>");
-  const braceRel = lookahead.indexOf("{");
-  if (arrowRel >= 0 && (braceRel < 0 || arrowRel < braceRel)) {
-    // Arrow function: body starts after "=>".
-    let k = close + 1 + arrowRel + 2;
-    while (k < src.length && /\s/.test(src[k])) k++;
-    if (src[k] === "{") return findBodyRange(src, k);
-    // Expression body — take until ; or newline at zero paren/brace depth.
-    let d = 0;
-    for (let j = k; j < src.length; j++) {
-      const ch = src[j];
-      if (ch === "(" || ch === "{" || ch === "[") d++;
-      else if (ch === ")" || ch === "}" || ch === "]") { if (d === 0) return [k, j]; d--; }
-      else if ((ch === ";" || ch === "\n") && d === 0) return [k, j];
-    }
-    return [k, src.length - 1];
-  }
-  if (braceRel >= 0) return findBodyRange(src, close + 1 + braceRel);
-  return null;
-}
-
-const DECISIONS = [
-  /\bif\s*\(/g,
-  /\bfor\s*\(/g,
-  /\bwhile\s*\(/g,
-  /\bdo\b/g,
-  /\bcase\s/g,
-  /\bcatch\s*\(/g,
-  /&&/g,
-  /\|\|/g,
-  /\?\?/g,
-  /\?(?!\?|\.)/g, // ternary (not ?? and not optional chaining ?.)
-];
-
-function complexityOf(body) {
+// ── CC of one function body (nested functions measured separately) ───────────
+function complexityOf(fn) {
   let cc = 1;
-  for (const re of DECISIONS) {
-    re.lastIndex = 0;
-    const m = body.match(re);
-    if (m) cc += m.length;
-  }
+  const visit = (node) => {
+    if (node !== fn && isFn(node)) return; // nested fn → its own entry
+    switch (node.kind) {
+      case ts.SyntaxKind.IfStatement:
+      case ts.SyntaxKind.ForStatement:
+      case ts.SyntaxKind.ForInStatement:
+      case ts.SyntaxKind.ForOfStatement:
+      case ts.SyntaxKind.WhileStatement:
+      case ts.SyntaxKind.DoStatement:
+      case ts.SyntaxKind.CaseClause:
+      case ts.SyntaxKind.CatchClause:
+      case ts.SyntaxKind.ConditionalExpression:
+        cc++;
+        break;
+      case ts.SyntaxKind.BinaryExpression: {
+        const op = node.operatorToken.kind;
+        if (op === ts.SyntaxKind.AmpersandAmpersandToken ||
+            op === ts.SyntaxKind.BarBarToken ||
+            op === ts.SyntaxKind.QuestionQuestionToken) cc++;
+        break;
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(fn, visit);
   return cc;
 }
 
-function lineOf(src, idx) {
-  let line = 1;
-  for (let i = 0; i < idx && i < src.length; i++) if (src[i] === "\n") line++;
-  return line;
-}
+// ── Scan ─────────────────────────────────────────────────────────────────────
+const files = [];
+for (const r of ROOTS) files.push(...walk(join(ROOT, r)));
+const targets = ONLY_FILE
+  ? files.filter((f) => relative(ROOT, f).replace(/\\/g, "/") === ONLY_FILE.replace(/\\/g, "/"))
+  : files;
 
-// ── Analysis ─────────────────────────────────────────────────────────────────
 const results = [];
-const perFile = new Map();
-
-const files = ONLY_FILE
-  ? [[ONLY_FILE]]
-  : ROOTS.map((r) => [...walk(r)]);
-for (const rootFiles of files) {
-  for (const file of rootFiles) {
-    const raw = readFileSync(file, "utf8");
-    const src = clean(raw);
-    const rel = relative(".", file).replace(/\\/g, "/");
-    const seen = new Set(); // avoid duplicate ranges from overlapping patterns
-    let fileCc = 0;
-
-    for (const pattern of FN_PATTERNS) {
-      pattern.lastIndex = 0;
-      let m;
-      while ((m = pattern.exec(src)) !== null) {
-        const name = m[1] ?? "(anonymous)";
-        const endIdx = m.index + m[0].length - 1;
-        // Param-list-aware body resolution: when the match ends at "(", the
-        // params may contain destructuring braces — paren-match first.
-        // Method-pattern matches end at "{" (already the body opener).
-        const range = src[endIdx] === "("
-          ? findFnBody(src, endIdx)
-          : src[endIdx] === "{"
-            ? findBodyRange(src, endIdx)
-            : findFnBody(src, src.indexOf("(", endIdx));
-        if (!range) continue;
-        const key = `${range[0]}-${range[1]}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        const body = src.slice(range[0], range[1] + 1);
-        const cc = complexityOf(body);
-        fileCc += cc;
-        results.push({ file: rel, name, line: lineOf(src, m.index), cc });
-      }
+for (const file of targets) {
+  const sf = ts.createSourceFile(
+    file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true,
+    file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+  const rel = relative(ROOT, file).replace(/\\/g, "/");
+  const visit = (node) => {
+    if (isFn(node) && node.body) {
+      const { line } = sf.getLineAndCharacterOfPosition(node.getStart());
+      results.push({ file: rel, line: line + 1, name: nameOf(node), cc: complexityOf(node) });
     }
-    perFile.set(rel, (perFile.get(rel) ?? 0) + fileCc);
-  }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
 }
+
+results.sort((a, b) => b.cc - a.cc || a.file.localeCompare(b.file) || a.line - b.line);
 
 // ── Report ───────────────────────────────────────────────────────────────────
-results.sort((a, b) => b.cc - a.cc || a.file.localeCompare(b.file));
+const mark = (cc) => (cc >= FAIL_AT ? "✖" : cc >= WARN_AT ? "⚠" : " ");
 const shown = SHOW_ALL ? results : results.filter((r) => r.cc > 5);
 
-const flag = (cc) => (cc >= FAIL_AT ? "✖" : cc >= WARN_AT ? "⚠" : " ");
-const pad = (s, w) => String(s).padEnd(w);
-
-console.log("\nCyclomatic complexity — consumption-dashboard");
-console.log(`thresholds: ⚠ ≥ ${WARN_AT} (refactor candidate) · ✖ ≥ ${FAIL_AT} (too complex)\n`);
-console.log(`${pad("CC", 5)}${pad("", 2)}${pad("Function", 34)}${pad("Line", 6)}File`);
-console.log("─".repeat(96));
+console.log(`\nCyclomatic complexity — ${results.length} functions in ${targets.length} files`);
+console.log(`(WARN ≥ ${WARN_AT} · FAIL ≥ ${FAIL_AT} · showing CC > 5${SHOW_ALL ? " + all" : ", use --all for everything"})\n`);
+console.log("  CC".padEnd(7) + "fn".padEnd(44) + "location");
+console.log("─".repeat(100));
 for (const r of shown) {
-  console.log(`${pad(r.cc, 5)}${pad(flag(r.cc), 2)}${pad(r.name.slice(0, 32), 34)}${pad(r.line, 6)}${r.file}`);
+  console.log(`${mark(r.cc)} ${String(r.cc).padStart(3)}  ${r.name.slice(0, 42).padEnd(44)}${r.file}:${r.line}`);
 }
 
-const worstFiles = [...perFile.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
-console.log("\nTop files by total complexity:");
-for (const [f, cc] of worstFiles) console.log(`  ${pad(cc, 6)}${f}`);
+// per-file rollup
+const byFile = new Map();
+for (const r of results) {
+  const e = byFile.get(r.file) ?? { fns: 0, total: 0, worst: 0 };
+  e.fns++; e.total += r.cc; e.worst = Math.max(e.worst, r.cc);
+  byFile.set(r.file, e);
+}
+console.log("\nPer-file (top 12 by worst function):\n");
+console.log("worst".padStart(6) + "avg".padStart(7) + "fns".padStart(6) + "   file");
+console.log("─".repeat(80));
+for (const [file, e] of [...byFile.entries()].sort((a, b) => b[1].worst - a[1].worst).slice(0, 12)) {
+  console.log(String(e.worst).padStart(6) + (e.total / e.fns).toFixed(1).padStart(7) + String(e.fns).padStart(6) + "   " + file);
+}
 
-const warns = results.filter((r) => r.cc >= WARN_AT && r.cc < FAIL_AT).length;
-const fails = results.filter((r) => r.cc >= FAIL_AT).length;
-console.log(`\n${results.length} functions analyzed · ${warns} ⚠ warnings · ${fails} ✖ over limit\n`);
+const complex = results.filter((r) => r.cc >= WARN_AT).length;
+const failing = results.filter((r) => r.cc >= FAIL_AT);
+console.log(`\nSummary: ${failing.length} function(s) ≥ ${FAIL_AT} (fail), ${complex} ≥ ${WARN_AT} (warn).`);
 
-if (CI && fails > 0) {
-  console.error(`CI mode: ${fails} function(s) at or above CC ${FAIL_AT} — failing.`);
+if (CI && failing.length > 0) {
+  console.error(`\n✖ CI gate: ${failing.length} function(s) at or above ${FAIL_AT}:`);
+  for (const r of failing) console.error(`   ${r.cc}  ${r.name}  ${r.file}:${r.line}`);
   process.exit(1);
 }

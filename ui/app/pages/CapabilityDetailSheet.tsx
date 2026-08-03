@@ -36,14 +36,7 @@ interface BinRow {
   delta_fmt: string;
 }
 
-const fmtNum = (v: number, d = 2) =>
-  !isFinite(v) ? "—" : v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
-
-const fmtDelta = (pct: number | null): string => {
-  if (pct === null || !isFinite(pct)) return "—";
-  const arrow = pct > 0.5 ? "▲" : pct < -0.5 ? "▼" : "＝";
-  return `${arrow} ${pct > 0 ? "+" : ""}${fmtNum(pct, 1)}%`;
-};
+import { fmtNum, fmtDelta } from "../utils/format";
 
 /**
  * Per-capability drill-down: cost trend, billed-quantity trend and a
